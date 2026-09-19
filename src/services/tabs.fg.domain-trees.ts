@@ -445,6 +445,62 @@ export function getCanonicalDomain(hostname: string): string {
   return (Utils.getDomain(norm, true, 1) || norm).toLowerCase()
 }
 
+export function isTabMatchingTree(url?: string, treeKey?: string): boolean {
+  if (!url || !treeKey) return false
+
+  const normTreeKey = treeKey.toLowerCase().trim().replace(/^www\./, '')
+
+  // 1. Check if treeKey matches via custom rules
+  const customMatch = matchCustomRule(url)
+  if (customMatch && customMatch.domainKey.toLowerCase() === normTreeKey) {
+    return true
+  }
+
+  // 2. Check if universal domain matches treeKey
+  const universalMatch = matchUniversal(url)
+  if (universalMatch && universalMatch.domainKey.toLowerCase() === normTreeKey) {
+    return true
+  }
+
+  // 3. Check hostname, baseDomain, canonicalDomain, or registered service name
+  let hostname = ''
+  try {
+    hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+  } catch {
+    return false
+  }
+  if (!hostname) return false
+
+  const baseDomain = (Utils.getDomain(hostname, true, 1) || hostname).toLowerCase()
+  const canonical = getCanonicalDomain(hostname)
+  const hostServiceName = getRegisteredServiceName(hostname)
+  const treeServiceName = getRegisteredServiceName(normTreeKey)
+
+  if (
+    hostname === normTreeKey ||
+    baseDomain === normTreeKey ||
+    canonical === normTreeKey ||
+    hostname.endsWith('.' + normTreeKey) ||
+    baseDomain.endsWith('.' + normTreeKey)
+  ) {
+    return true
+  }
+
+  if (
+    treeServiceName &&
+    treeServiceName.length > 2 &&
+    (hostServiceName === treeServiceName || baseDomain.split('.')[0] === treeServiceName)
+  ) {
+    return true
+  }
+
+  if (normTreeKey.length > 2 && (hostServiceName === normTreeKey || baseDomain.split('.')[0] === normTreeKey)) {
+    return true
+  }
+
+  return false
+}
+
 export function isCustomRuleDomainKey(domainKey?: string): boolean {
   if (!domainKey || !Settings.state.domainTrees || !Settings.state.domainTreeRules?.length) {
     return false
@@ -787,12 +843,23 @@ export function getDomainTabs(domainKey: string, panelId?: ID): T.Tab[] {
     if (t.pinned || t.internal || t.isGroup || isDomainTreeGroup(t)) return false
     if (panelId !== undefined && t.panelId !== panelId) return false
     // If tab is already inside an ancestor domain tree, don't count towards top-level trees
-    // UNLESS it matches an explicit custom rule that is different from ancestorTree
+    // UNLESS it matches a different custom rule or an existing placeholder exists for domainKey
     const ancestor = getAncestorDomainTree(t)
     if (ancestor) {
       const parentKey = getDomainTreeKey(ancestor)
       const customMatch = matchCustomRule(t.url)
-      if (!customMatch || customMatch.domainKey === parentKey) {
+      const existingPlaceholder =
+        findExistingDomainPlaceholder(domainKey, panelId) ||
+        findExistingDomainPlaceholder(domainKey)
+
+      const shouldBreakOut =
+        (customMatch && customMatch.domainKey !== parentKey) ||
+        (parentKey &&
+          !isTabMatchingTree(t.url, parentKey) &&
+          existingPlaceholder !== undefined &&
+          existingPlaceholder.id !== ancestor.id)
+
+      if (!shouldBreakOut) {
         return false
       }
     }
@@ -846,8 +913,22 @@ export async function scanExistingTabs(panelId?: ID): Promise<void> {
         const ancestorTree = getAncestorDomainTree(tab)
         if (ancestorTree) {
           const parentKey = getDomainTreeKey(ancestorTree)
+          const match = matchDomain(tab.url)
           const customMatch = matchCustomRule(tab.url)
-          if (!customMatch || customMatch.domainKey === parentKey) {
+          const existingPlaceholder = match
+            ? findExistingDomainPlaceholder(match.domainKey, panel.id) ||
+              findExistingDomainPlaceholder(match.domainKey)
+            : undefined
+
+          const shouldBreakOut =
+            (customMatch && customMatch.domainKey !== parentKey) ||
+            (match &&
+              parentKey &&
+              !isTabMatchingTree(tab.url, parentKey) &&
+              existingPlaceholder !== undefined &&
+              existingPlaceholder.id !== ancestorTree.id)
+
+          if (!shouldBreakOut) {
             continue
           }
         }
@@ -939,9 +1020,22 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
   if (ancestorTree) {
     const parentDomainKey = getDomainTreeKey(ancestorTree)
     if (parentDomainKey) {
+      const match = matchDomain(tab.url)
       const customMatch = matchCustomRule(tab.url)
-      if (customMatch && customMatch.domainKey !== parentDomainKey) {
-        // Tab matches an explicit custom rule! Break out of ancestorTree.
+      const existingPlaceholder = match
+        ? findExistingDomainPlaceholder(match.domainKey, tab.panelId) ||
+          findExistingDomainPlaceholder(match.domainKey)
+        : undefined
+
+      const shouldBreakOut =
+        (customMatch && customMatch.domainKey !== parentDomainKey) ||
+        (match &&
+          !isTabMatchingTree(tab.url, parentDomainKey) &&
+          existingPlaceholder !== undefined &&
+          existingPlaceholder.id !== ancestorTree.id)
+
+      if (shouldBreakOut) {
+        // Tab belongs to its own domain tree! Break out of ancestorTree.
         const oldImmediate = getImmediateDomainTree(tab)
         const dst = {
           index: tab.index,
@@ -1211,15 +1305,28 @@ export async function scanSubDomainTrees(parentPlaceholder: T.Tab, depth = 0): P
   const subDomainGroups = new Map<string, { title: string; tabs: T.Tab[] }>()
 
   for (const tab of contentTabs) {
+    const match = matchDomain(tab.url)
     const customMatch = matchCustomRule(tab.url)
-    if (customMatch && customMatch.domainKey !== parentDomainKey) {
+    const existingPlaceholder = match
+      ? findExistingDomainPlaceholder(match.domainKey, freshParent.panelId) ||
+        findExistingDomainPlaceholder(match.domainKey)
+      : undefined
+
+    const shouldBreakOut =
+      (customMatch && customMatch.domainKey !== parentDomainKey) ||
+      (match &&
+        !isTabMatchingTree(tab.url, parentDomainKey) &&
+        existingPlaceholder !== undefined &&
+        existingPlaceholder.id !== freshParent.id)
+
+    if (shouldBreakOut) {
       // Check if this parentPlaceholder is a daughter tree of an ancestor custom rule
       const ancestorTree = getAncestorDomainTree(freshParent)
       const ancestorKey = ancestorTree ? getDomainTreeKey(ancestorTree) : undefined
-      if (ancestorKey && ancestorKey === customMatch.domainKey) {
+      if (ancestorKey && isTabMatchingTree(tab.url, ancestorKey)) {
         // Tab belongs to the ancestor custom category tree, so it is valid inside this daughter tree!
       } else {
-        // Tab matches an explicit custom rule! Must not stay in parent tree.
+        // Tab does not belong to this tree! Must not stay in parent tree.
         const dst = {
           index: tab.index,
           panelId: tab.panelId,

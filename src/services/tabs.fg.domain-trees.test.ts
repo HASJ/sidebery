@@ -1088,6 +1088,108 @@ describe('DomainTrees service', () => {
     moveSpy.mockRestore()
   })
 
+  test('moving foreign domain tab nested under another domain tree into an existing domain tree', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreesUniversal = true
+    Settings.state.domainTreeRules = []
+
+    const panel: any = {
+      id: 'default',
+      type: PanelType.tabs,
+      tabs: [],
+      startTabIndex: 0,
+      nextTabIndex: 5,
+      reactive: { visibleTabIds: [] },
+    }
+    Sidebar.panelsById['default'] = panel
+
+    const githubPlaceholder = {
+      id: 100,
+      index: 0,
+      lvl: 0,
+      panelId: 'default',
+      isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('github.com', 'GitHub'),
+      parentId: -1,
+    } as Tab
+
+    const existingGithubTab = {
+      id: 101,
+      index: 1,
+      lvl: 1,
+      panelId: 'default',
+      parentId: 100,
+      url: 'https://github.com/mbnuqw/sidebery',
+    } as Tab
+
+    const nexusmodsPlaceholder = {
+      id: 200,
+      index: 2,
+      lvl: 0,
+      panelId: 'default',
+      isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('nexusmods.com', 'Nexusmods'),
+      parentId: -1,
+    } as Tab
+
+    const existingNexusTab = {
+      id: 202,
+      index: 3,
+      lvl: 1,
+      panelId: 'default',
+      parentId: 200,
+      url: 'https://www.nexusmods.com/control/mods/1',
+    } as Tab
+
+    const githubTabUnderNexus = {
+      id: 201,
+      index: 4,
+      lvl: 1,
+      panelId: 'default',
+      parentId: 200,
+      url: 'https://github.com/another/repo',
+    } as Tab
+
+    Tabs.list.length = 0
+    Tabs.list.push(githubPlaceholder, existingGithubTab, nexusmodsPlaceholder, existingNexusTab, githubTabUnderNexus)
+    Tabs.byId[100] = githubPlaceholder
+    Tabs.byId[101] = existingGithubTab
+    Tabs.byId[200] = nexusmodsPlaceholder
+    Tabs.byId[202] = existingNexusTab
+    Tabs.byId[201] = githubTabUnderNexus
+
+    const rmSpy = vi.spyOn(Tabs, 'removeTabs').mockImplementation(async (ids: any) => {
+      for (const id of ids) {
+        delete Tabs.byId[id]
+        const idx = Tabs.list.findIndex(t => t.id === id)
+        if (idx !== -1) Tabs.list.splice(idx, 1)
+      }
+    })
+
+    const moveSpy = vi.spyOn(Tabs, 'move').mockImplementation(async (tabs: any, _config: any, dst: any) => {
+      for (const t of tabs) {
+        t.parentId = dst.parentId
+        t.panelId = dst.panelId
+        const oldIdx = Tabs.list.findIndex(x => x.id === t.id)
+        if (oldIdx !== -1) {
+          Tabs.list.splice(oldIdx, 1)
+          Tabs.list.splice(dst.index, 0, t)
+        }
+      }
+      for (let i = 0; i < Tabs.list.length; i++) {
+        Tabs.list[i].index = i
+      }
+    })
+
+    await DomainTrees.handleDomainTab(201)
+
+    // The github tab under nexusmods should break out and move under githubPlaceholder 100!
+    expect(githubTabUnderNexus.parentId).toBe(100)
+
+    rmSpy.mockRestore()
+    moveSpy.mockRestore()
+  })
+
   test('onTabRemovedCheck deletes empty group tree when child tab is removed', async () => {
     Settings.state.domainTrees = true
 

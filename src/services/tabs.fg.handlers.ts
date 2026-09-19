@@ -895,6 +895,27 @@ function onTabUpdated(tabId: ID, change: browser.tabs.ChangeInfo, nativeTab: Nat
       else browser.tabs.show?.([tabId])
     }
 
+    if (change.discarded === false) {
+      if (
+        Settings.state.domainTrees &&
+        !tab.pinned &&
+        !tab.internal &&
+        !tab.isGroup &&
+        !Tabs.DomainTrees?.isDomainTreeGroup(tab) &&
+        tab.url &&
+        !tab.url.startsWith('about:') &&
+        !tab.url.startsWith('chrome:') &&
+        !tab.url.includes('/sidebery/')
+      ) {
+        Tabs.DomainTrees?.log(
+          'INFO',
+          'onTabUpdated:Load',
+          `Tab ${tabId} loaded/un-discarded, triggering handleDomainTab`
+        )
+        Tabs.DomainTrees.handleDomainTabDebounced(tabId, 200)
+      }
+    }
+
     // Update group
     const groupTab = Tabs.getGroupTab(tab)
     if (groupTab && !groupTab.discarded) Tabs.updateGroupOrItsChild(groupTab, nativeTab.id)
