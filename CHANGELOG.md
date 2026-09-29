@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## v5.6.4 - 2026.09.29
 
 ### Added
 
+- Domain trees: automatic grouping of tabs under collapsible domain tree placeholder tabs (configurable per container/panel, auto-folding, universal domain matching)
+- Search: bottom search bar component with F8 shortcut integration and fast tokenized diacritics-insensitive cached search
+- Containers: updated icons
 - Tabs: multiline titles  
   BREAKING CHANGE (for custom styles (in Sidebery) users):
   - Removed `--tabs-height` CSS var: Use `--tabs-padding`, `--tabs-title-line-height`, `--tabs-title-padding-top`, `--tabs-title-padding-bottom` vars to configure tab height. Additionally, `--tabs-title-padding-top`, `--tabs-title-padding-bottom` vars can be used to shift the text of title up or down.
@@ -19,6 +22,10 @@
 
 ### Fixed
 
+- Domain trees: resolve domain tree closing and confirmation backdrop cancellation
+- Domain trees: break out foreign tabs into matching domain trees and handle un-discarded tabs
+- Sticky tabs: incorrect rendering on folding the branch with active child
+- Tab: title, favicon and flashFx are not updated correctly in sticky tabs
 - Tabs: desynced order on fast opening new tabs  
 - Tabs: false-positive bottom sticky tabs bar
 - Unsafe index usage in onTabCreated  
@@ -42,6 +49,7 @@
 
 ### Performance Improvements
 
+- Search: cached tokenized search index for instant filtering
 - Some micro optimizations
 - Snapshots: use TextEncoder instead of new Blob to fix heavy GC lag (by [@llc0930](https://github.com/llc0930): [#2441](https://github.com/mbnuqw/sidebery/issues/2441))  
 

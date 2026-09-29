@@ -44,9 +44,10 @@ Firefox extension for managing tabs and bookmarks in sidebar.
 Sidebery is a highly configurable sidebar with panels of different types. Some of the key features:
 
 - Vertical tabs panels with tree or flat layout
+- Domain trees (automatic grouping of tabs per domain)
 - Bookmarks panels
 - History panel
-- Search in panels
+- Search in panels and bottom search bar (F8)
 - Customizable context menu
 - Customizable styles
 - Snapshots (saved windows/panels/tabs)
