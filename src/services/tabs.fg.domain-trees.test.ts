@@ -3,6 +3,7 @@ import * as Settings from 'src/services/settings'
 import * as DomainTrees from './tabs.fg.domain-trees'
 import * as Tabs from 'src/services/tabs.fg'
 import * as Sidebar from 'src/services/sidebar.fg'
+import * as Popups from 'src/services/popups.fg'
 import { PanelType } from 'src/enums'
 import * as Utils from 'src/utils'
 import type { Tab } from 'src/types'
@@ -1789,6 +1790,267 @@ describe('DomainTrees service', () => {
     const satMatch2 = col2.match(/hsl\(\d+deg,\s*(\d+)%,\s*48%\)/)
     const sat2 = parseInt(satMatch2?.[1] ?? '0', 10)
     expect(sat2).toBeGreaterThanOrEqual(88)
+  })
+
+  test('checkGuardedPlaceholderClose returns ok: true, confirmed: true when confirmed by user', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeConfirmClose = true
+
+    const ph: Tab = {
+      id: 600,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+      title: 'YouTube',
+      isGroup: true,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId: 'tabs_panel',
+    } as Tab
+    const child1: Tab = {
+      id: 601,
+      url: 'https://youtube.com/watch?v=1',
+      title: 'Video 1',
+      index: 1,
+      lvl: 1,
+      parentId: 600,
+      panelId: 'tabs_panel',
+    } as Tab
+    const child2: Tab = {
+      id: 602,
+      url: 'https://youtube.com/watch?v=2',
+      title: 'Video 2',
+      index: 2,
+      lvl: 1,
+      parentId: 600,
+      panelId: 'tabs_panel',
+    } as Tab
+
+    Tabs.byId[600] = ph
+    Tabs.byId[601] = child1
+    Tabs.byId[602] = child2
+    Tabs.list.length = 0
+    Tabs.list.push(ph, child1, child2)
+
+    const confirmSpy = vi.spyOn(Popups, 'confirm').mockResolvedValue(true)
+    const result = await DomainTrees.checkGuardedPlaceholderClose([600])
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(result).toEqual({ ok: true, confirmed: true })
+    confirmSpy.mockRestore()
+  })
+
+  test('checkGuardedPlaceholderClose returns ok: false, confirmed: false when cancelled by user', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeConfirmClose = true
+
+    const ph: Tab = {
+      id: 600,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+      title: 'YouTube',
+      isGroup: true,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId: 'tabs_panel',
+    } as Tab
+    const child1: Tab = {
+      id: 601,
+      url: 'https://youtube.com/watch?v=1',
+      title: 'Video 1',
+      index: 1,
+      lvl: 1,
+      parentId: 600,
+      panelId: 'tabs_panel',
+    } as Tab
+
+    Tabs.byId[600] = ph
+    Tabs.byId[601] = child1
+    Tabs.list.length = 0
+    Tabs.list.push(ph, child1)
+
+    const confirmSpy = vi.spyOn(Popups, 'confirm').mockResolvedValue(false)
+    const result = await DomainTrees.checkGuardedPlaceholderClose([600])
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(result).toEqual({ ok: false, confirmed: false })
+    confirmSpy.mockRestore()
+  })
+
+  test('checkGuardedPlaceholderClose returns ok: true, confirmed: false when confirmClose is disabled', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeConfirmClose = false
+
+    const ph: Tab = {
+      id: 600,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+      title: 'YouTube',
+      isGroup: true,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId: 'tabs_panel',
+    } as Tab
+    const child1: Tab = {
+      id: 601,
+      url: 'https://youtube.com/watch?v=1',
+      title: 'Video 1',
+      index: 1,
+      lvl: 1,
+      parentId: 600,
+      panelId: 'tabs_panel',
+    } as Tab
+
+    Tabs.byId[600] = ph
+    Tabs.byId[601] = child1
+    Tabs.list.length = 0
+    Tabs.list.push(ph, child1)
+
+    const confirmSpy = vi.spyOn(Popups, 'confirm')
+    const result = await DomainTrees.checkGuardedPlaceholderClose([600])
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(result).toEqual({ ok: true, confirmed: false })
+    confirmSpy.mockRestore()
+  })
+
+  test('removeTabs closes domain tree placeholder and all its children', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeConfirmClose = true
+    Settings.state.warnOnMultiTabClose = 'none'
+
+    const panelId = 'tabs_panel'
+    const panel = {
+      id: panelId,
+      type: PanelType.tabs,
+      startTabIndex: 0,
+      nextTabIndex: 4,
+      reactive: { len: 4 },
+      tabs: [],
+    } as any
+    Sidebar.panelsById[panelId] = panel
+
+    const ph: Tab = {
+      id: 710,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+      title: 'YouTube',
+      isGroup: true,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId,
+      folded: false,
+    } as Tab
+    const child1: Tab = {
+      id: 711,
+      url: 'https://youtube.com/watch?v=1',
+      title: 'Video 1',
+      index: 1,
+      lvl: 1,
+      parentId: 710,
+      panelId,
+    } as Tab
+    const child2: Tab = {
+      id: 712,
+      url: 'https://youtube.com/watch?v=2',
+      title: 'Video 2',
+      index: 2,
+      lvl: 1,
+      parentId: 710,
+      panelId,
+    } as Tab
+    const normalTab: Tab = {
+      id: 713,
+      url: 'https://example.com',
+      title: 'Example',
+      index: 3,
+      lvl: 0,
+      parentId: -1,
+      panelId,
+    } as Tab
+
+    Tabs.byId[710] = ph
+    Tabs.byId[711] = child1
+    Tabs.byId[712] = child2
+    Tabs.byId[713] = normalTab
+    Tabs.list.length = 0
+    Tabs.list.push(ph, child1, child2, normalTab)
+
+    const confirmSpy = vi.spyOn(Popups, 'confirm').mockResolvedValue(true)
+    const browserRmSpy = vi.spyOn(browser.tabs, 'remove').mockResolvedValue(undefined as any)
+
+    await Tabs.removeTabs([710])
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    // All 3 tabs in domain tree (child2, child1, ph) should be removed, while normalTab is kept
+    expect(browserRmSpy).toHaveBeenCalledWith(expect.arrayContaining([710, 711, 712]))
+    const rmArg = browserRmSpy.mock.calls[0][0] as number[]
+    expect(rmArg).not.toContain(713)
+
+    confirmSpy.mockRestore()
+    browserRmSpy.mockRestore()
+  })
+
+  test('removeTabs aborts without removing any tabs when confirmation is cancelled', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeConfirmClose = true
+
+    const panelId = 'tabs_panel'
+    const panel = {
+      id: panelId,
+      type: PanelType.tabs,
+      startTabIndex: 0,
+      nextTabIndex: 3,
+      reactive: { len: 3 },
+      tabs: [],
+    } as any
+    Sidebar.panelsById[panelId] = panel
+
+    const ph: Tab = {
+      id: 720,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+      title: 'YouTube',
+      isGroup: true,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId,
+      folded: false,
+    } as Tab
+    const child1: Tab = {
+      id: 721,
+      url: 'https://youtube.com/watch?v=1',
+      title: 'Video 1',
+      index: 1,
+      lvl: 1,
+      parentId: 720,
+      panelId,
+    } as Tab
+    const child2: Tab = {
+      id: 722,
+      url: 'https://youtube.com/watch?v=2',
+      title: 'Video 2',
+      index: 2,
+      lvl: 1,
+      parentId: 720,
+      panelId,
+    } as Tab
+
+    Tabs.byId[720] = ph
+    Tabs.byId[721] = child1
+    Tabs.byId[722] = child2
+    Tabs.list.length = 0
+    Tabs.list.push(ph, child1, child2)
+
+    const confirmSpy = vi.spyOn(Popups, 'confirm').mockResolvedValue(false)
+    const browserRmSpy = vi.spyOn(browser.tabs, 'remove')
+
+    await Tabs.removeTabs([720])
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(browserRmSpy).not.toHaveBeenCalled()
+
+    confirmSpy.mockRestore()
+    browserRmSpy.mockRestore()
   })
 })
 

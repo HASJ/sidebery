@@ -1,5 +1,5 @@
 <template lang="pug">
-.Confirm.popup-container(@click="Popups.finishConfirmation(false)")
+.Confirm.popup-container(@mousedown.stop.self="Popups.finishConfirmation(false)" @mouseup.stop)
   .popup(@click.stop)
     h2 {{translate('confirm.warn_title')}}
     .msg {{Popups.reactive.confirm?.msg}}

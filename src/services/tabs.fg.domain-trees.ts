@@ -1826,6 +1826,9 @@ export function cleanEmptyDomainTreesDebounced(delay = 100): void {
 
 export async function onTabRemovedCheck(removedTab: T.Tab): Promise<void> {
   if (!Settings.state.domainTrees) return
+  if (isDomainTreeGroup(removedTab)) {
+    lastActiveChildMap.delete(removedTab.id)
+  }
   if (removedTab.parentId === NOID) return
 
   const parentPlaceholders: ID[] = []
@@ -1844,9 +1847,19 @@ export async function onTabRemovedCheck(removedTab: T.Tab): Promise<void> {
   }
 }
 
-export async function checkGuardedPlaceholderClose(tabIds: ID[]): Promise<boolean> {
-  if (!Settings.state.domainTrees || !Settings.state.domainTreeConfirmClose) return true
+export interface GuardedPlaceholderCloseResult {
+  ok: boolean
+  confirmed?: boolean
+}
 
+export async function checkGuardedPlaceholderClose(
+  tabIds: ID[]
+): Promise<GuardedPlaceholderCloseResult> {
+  if (!Settings.state.domainTrees || !Settings.state.domainTreeConfirmClose) {
+    return { ok: true, confirmed: false }
+  }
+
+  let confirmed = false
   for (const id of tabIds) {
     const tab = Tabs.byId[id]
     if (!tab || !isDomainTreeGroup(tab)) continue
@@ -1860,9 +1873,10 @@ export async function checkGuardedPlaceholderClose(tabIds: ID[]): Promise<boolea
         translate('confirm.domain_tree_close', domainKey, branch.length),
         ConfirmationType.RmTab
       )
-      if (!ok) return false
+      if (!ok) return { ok: false, confirmed: false }
+      confirmed = true
     }
   }
 
-  return true
+  return { ok: true, confirmed }
 }

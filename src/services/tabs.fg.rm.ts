@@ -206,9 +206,11 @@ export async function removeTabs(
   const panel = Sidebar.panelsById[panelId]
   if (!Utils.isTabsPanel(panel)) return
 
+  let dtConfirmed = false
   if (!silent) {
-    const ok = await Tabs.DomainTrees.checkGuardedPlaceholderClose(tabIds)
-    if (!ok) return
+    const res = await Tabs.DomainTrees.checkGuardedPlaceholderClose(tabIds)
+    if (!res.ok) return
+    dtConfirmed = !!res.confirmed
   }
 
   Tabs.sortTabIds(tabIds)
@@ -231,7 +233,8 @@ export async function removeTabs(
       if (tab.invisible) hasInvisibleTab = true
     }
 
-    if ((rmChildTabsFolded && tab.folded) || rmChildTabsAll) {
+    const isDomainTree = Settings.state.domainTrees && Tabs.DomainTrees?.isDomainTreeGroup(tab)
+    if ((rmChildTabsFolded && tab.folded) || rmChildTabsAll || isDomainTree) {
       for (let t, i = tab.index + 1; i < Tabs.list.length; i++) {
         t = Tabs.list[i]
         if (!t || t.lvl <= tab.lvl) break
@@ -246,10 +249,16 @@ export async function removeTabs(
   }
 
   let count = tabs.length
+  const onlyDomainTrees =
+    dtConfirmed &&
+    tabIds.every(id => {
+      const t = Tabs.byId[id]
+      return t && Tabs.DomainTrees?.isDomainTreeGroup(t)
+    })
   const warn =
     Settings.state.warnOnMultiTabClose === 'any' ||
     (hasInvisibleTab && Settings.state.warnOnMultiTabClose === 'collapsed')
-  if (!silent && warn && count > 1) {
+  if (!silent && !onlyDomainTrees && warn && count > 1) {
     const ok = await Popups.confirm(translate('confirm.tabs_close', count), ConfirmationType.RmTab)
     // Cancel
     if (!ok) {

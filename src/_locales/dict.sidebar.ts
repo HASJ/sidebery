@@ -57,7 +57,14 @@ export const sidebarTranslations: Translations = {
     ja: n => `本当に${n}個のタブを閉じますか？`,
   },
   'confirm.domain_tree_close': {
-    en: (domain, n) => `Close "${domain}" domain tree and its ${n} tabs?`,
+    en: (domain, n) =>
+      n === 1
+        ? `Close "${domain}" domain tree and its 1 tab?`
+        : `Close "${domain}" domain tree and its ${n} tabs?`,
+    ru: (domain, n) => `Закрыть дерево домена "${domain}" и его вкладки (${n})?`,
+    de: (domain, n) => `Möchten Sie den Domain-Baum "${domain}" und seine ${n} Tabs schließen?`,
+    fr: (domain, n) => `Fermer l'arborescence de domaine "${domain}" et ses ${n} onglets ?`,
+    zh_CN: (domain, n) => `关闭“${domain}”域名树及其 ${n} 个标签页？`,
   },
   'confirm.bookmarks_delete': {
     en: 'Are you sure you want to delete selected bookmarks?',

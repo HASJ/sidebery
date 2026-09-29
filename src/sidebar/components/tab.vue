@@ -93,6 +93,7 @@
       @dragstart.stop.prevent
       @mousedown.stop="onMouseDownClose"
       @mouseup.stop="onMouseUpClose"
+      @click.stop.prevent
       @contextmenu.stop.prevent)
       svg.close-icon: use(href="#icon_remove")
     .ctx(v-once v-if="tab.reactive.containerColor")

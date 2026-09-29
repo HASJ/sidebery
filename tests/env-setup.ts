@@ -94,6 +94,9 @@ void (function () {
     tabs: {
       create: () => Promise.resolve({}),
       captureTab: () => 'tab image',
+      remove: () => Promise.resolve(),
+      update: () => Promise.resolve({}),
+      get: () => Promise.resolve({}),
     },
     windows: {},
   }
