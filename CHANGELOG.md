@@ -1,5 +1,12 @@
 # Changelog
 
+## v5.6.5 - 2026.10.13
+
+### Added
+
+- Optional promotion of domain trees to the top of their panel when a new tab joins them
+- Optional brief highlighting of newly created foreground and background tabs
+
 ## v5.6.4 - 2026.09.29
 
 ### Added
