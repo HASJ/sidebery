@@ -18,6 +18,7 @@ export class MTab implements Tab {
   loading: boolean | 'ok' | 'err' = false
   warn: boolean = false
   unread?: boolean | undefined
+  newForDomainTree?: boolean
   relGroupId: ID = NOID
   dstPanelId: ID = NOID
   autoGroupped?: boolean | undefined

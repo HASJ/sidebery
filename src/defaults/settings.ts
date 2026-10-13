@@ -98,6 +98,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
   askNewBookmarkPlace: true,
   tabsRmUndoNote: true,
   tabsUnreadMark: false,
+  tabsHighlightNew: false,
   tabsBadge: true,
   tabsBadgeRules: 'minIdleTime:5000; urgent',
   tabsReloadLimit: 5,
@@ -167,6 +168,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
   domainTreeRules: [],
   domainTreeNewTabPosition: 'last_child',
   domainTreeAutoFold: true,
+  domainTreeMoveToTop: false,
   domainTreeConfirmClose: true,
 
   // Tabs colorization

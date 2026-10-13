@@ -2765,6 +2765,10 @@ export async function paste(dst: T.DstPlaceInfo) {
   }
 }
 
+export function highlightNewTab(tab: T.Tab): void {
+  if (Settings.state.tabsHighlightNew) triggerFlashAnimation(tab)
+}
+
 export function triggerFlashAnimation(tab: T.Tab): void {
   if (tab.flashAnimationTimeout) return
   if (tab.flashFxEl) tab.flashFxEl.setAttribute('data-run', 'true')

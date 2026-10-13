@@ -96,6 +96,7 @@ export interface SettingsState {
   activateAfterClosingNoDiscarded: boolean
   tabsRmUndoNote: boolean
   tabsUnreadMark: boolean
+  tabsHighlightNew: boolean
   tabsUpdateMark?: (typeof SETTINGS_OPTIONS.tabsUpdateMark)[number] // DEPR
   tabsUpdateMarkFirst?: boolean // DEPR
   tabsBadge: boolean
@@ -168,6 +169,7 @@ export interface SettingsState {
   domainTreeRules: DomainTreeRuleConfig[]
   domainTreeNewTabPosition: (typeof SETTINGS_OPTIONS.domainTreeNewTabPosition)[number]
   domainTreeAutoFold: boolean
+  domainTreeMoveToTop: boolean
   domainTreeConfirmClose: boolean
 
   // Tabs colorization

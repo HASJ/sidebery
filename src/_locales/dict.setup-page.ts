@@ -2908,6 +2908,9 @@ Przykłady: "*", "ctrl+$", "ctrl+alt+g"`,
     zh_TW: '忽略已卸載分頁',
     ja: '破棄されたタブを無視する',
   },
+  'settings.tabs_highlight_new': {
+    en: 'Briefly highlight newly created tabs',
+  },
   'settings.tabs_unread_mark': {
     en: 'Show mark on unread tabs',
     de: 'Zeige Markierung an ungelesenen Tabs',
@@ -4018,6 +4021,9 @@ Available parameters:
   },
   'settings.domain_tree_auto_fold': {
     en: 'Auto-fold domain trees',
+  },
+  'settings.domain_tree_move_to_top': {
+    en: 'Move domain trees to the top when a new tab joins them',
   },
   'settings.domain_tree_confirm_close': {
     en: 'Confirm before closing domain tree placeholder',

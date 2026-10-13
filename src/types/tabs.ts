@@ -21,6 +21,7 @@ export interface Tab extends NativeTab {
   loading: boolean | 'ok' | 'err'
   warn: boolean
   unread?: boolean
+  newForDomainTree?: boolean
   relGroupId: ID
   dstPanelId: ID
   autoGroupped?: boolean

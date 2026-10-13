@@ -573,7 +573,20 @@ export function getNamedDomainTreeInsertionIndex(panelId: ID): number {
   return targetIndex
 }
 
+export async function moveDomainTreeToTop(tree: T.Tab): Promise<void> {
+  if (!Settings.state.domainTreeMoveToTop) return
+  const panel = Sidebar.panelsById[tree.panelId]
+  if (!Utils.isTabsPanel(panel) || !isDomainTreeGroup(tree) || tree.pinned || tree.parentId !== NOID) return
+  if (tree.index === panel.startTabIndex) return
+  const branch = Tabs.getBranch(tree, true)
+  if (branch.length) {
+    await Tabs.move(branch, {}, { index: panel.startTabIndex, panelId: panel.id, parentId: NOID })
+  }
+}
+
 export async function ensureNamedDomainTreesAtTop(panelId?: ID): Promise<void> {
+  // Activity ordering takes precedence over the usual named-tree ordering.
+  if (Settings.state.domainTreeMoveToTop) return
   if (panelId === undefined) {
     for (const panel of Sidebar.panels) {
       if (Utils.isTabsPanel(panel)) await ensureNamedDomainTreesAtTop(panel.id)
@@ -1013,6 +1026,9 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
     if (!tab || tab.pinned || tab.internal || tab.isGroup || isDomainTreeGroup(tab)) return
     if (!Settings.state.domainTrees) return
 
+    const isNewTab = !!tab.newForDomainTree
+    tab.newForDomainTree = false
+
     log('INFO', 'HandleTab', `handleDomainTab(tabId=${tabId}, url=${tab.url}, parentId=${tab.parentId})`)
 
   // 1. Is this tab currently inside an existing domain tree?
@@ -1049,6 +1065,7 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
       } else {
         // Tab stays inside ancestorTree!
         await scanSubDomainTrees(ancestorTree)
+        if (isNewTab) await moveDomainTreeToTop(ancestorTree)
         return
       }
     }
@@ -1098,6 +1115,7 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
   if (placeholder) {
     if (tab.parentId === placeholder.id && tab.panelId === targetPanelId) {
       await scanSubDomainTrees(placeholder)
+      if (isNewTab) await moveDomainTreeToTop(placeholder)
       return
     }
 
@@ -1108,6 +1126,7 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
     if (isNamedDomainRule(domainKey)) {
       await ensureNamedDomainTreesAtTop(targetPanelId)
     }
+    if (isNewTab) await moveDomainTreeToTop(placeholder)
     return
   }
 
@@ -1146,6 +1165,7 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
   if (isNamedDomainRule(domainKey)) {
     await ensureNamedDomainTreesAtTop(targetPanelId)
   }
+  if (isNewTab) await moveDomainTreeToTop(placeholder)
   } finally {
     inFlightTabs.delete(tabId)
   }

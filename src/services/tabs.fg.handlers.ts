@@ -19,6 +19,7 @@ import * as Mouse from 'src/services/mouse.fg'
 import * as Popups from 'src/services/popups.fg'
 import * as Links from 'src/services/links'
 import * as Info from 'src/services/info.fg'
+import { nextTick } from 'vue'
 
 const EXT_HOST = browser.runtime.getURL('').slice(16)
 const URL_HOST_PATH_RE = /^([a-z0-9-]{1,63}\.)+\w+(:\d+)?\/[A-Za-z0-9-._~:/?#[\]%@!$&'()*+,;=]*$/
@@ -560,6 +561,16 @@ async function onTabCreated(nativeTab: NativeTab, attached?: boolean) {
     if (container) tab.reopenInContainer = container.id
   }
 
+  const isNewTab =
+    !attached &&
+    !reopenedTabInfo &&
+    !tab.reopened &&
+    !tab.discarded &&
+    !tab.isGroup &&
+    !isDTGroup
+  // Keep this transient marker through about:blank until the first domain routing.
+  tab.newForDomainTree = isNewTab && !tab.pinned && Settings.state.domainTrees
+
   // Put new tab in state
   Tabs.byId[tab.id] = tab
   Tabs.list.splice(index, 0, tab)
@@ -735,6 +746,12 @@ async function onTabCreated(nativeTab: NativeTab, attached?: boolean) {
 
   if (Tabs.badgeRulesEnabled && tab.discarded) {
     Tabs.updateBadge(tab)
+  }
+
+  if (isNewTab) {
+    nextTick(() => {
+      if (Tabs.byId[tab.id] === tab) Tabs.highlightNewTab(tab)
+    })
   }
 
   if (

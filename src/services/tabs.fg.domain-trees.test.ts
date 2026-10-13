@@ -7,6 +7,7 @@ import * as Popups from 'src/services/popups.fg'
 import { PanelType } from 'src/enums'
 import * as Utils from 'src/utils'
 import type { Tab } from 'src/types'
+import { MTab } from 'src/defaults/mocks.tabs.fg'
 
 describe('DomainTrees service', () => {
   beforeEach(() => {
@@ -1717,6 +1718,81 @@ describe('DomainTrees service', () => {
     )
 
     moveSpy.mockRestore()
+  })
+
+  test.each([true, false])('promotes an entire receiving domain tree only when enabled (%s)', async enabled => {
+    Settings.state.domainTreeMoveToTop = enabled
+    const panelId = 'promotion_panel'
+    Sidebar.panelsById[panelId] = {
+      id: panelId, type: PanelType.tabs, startTabIndex: 2, nextTabIndex: 6,
+    } as any
+    const tree = {
+      id: 2100, index: 4, lvl: 0, parentId: -1, panelId, isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+    } as Tab
+    const child = { id: 2101, index: 5, lvl: 1, parentId: tree.id, panelId } as Tab
+    Tabs.list.length = 0
+    Tabs.list.push({ id: 2096 } as Tab, { id: 2097 } as Tab,
+      { id: 2098, index: 2, lvl: 0 } as Tab, { id: 2099, index: 3, lvl: 0 } as Tab,
+      tree, child)
+    Tabs.byId[tree.id] = tree
+    Tabs.byId[child.id] = child
+    const moveSpy = vi.spyOn(Tabs, 'move').mockResolvedValue()
+    try {
+      await DomainTrees.moveDomainTreeToTop(tree)
+      if (enabled) {
+        expect(moveSpy).toHaveBeenCalledWith([tree, child], {}, {
+          index: 2, panelId, parentId: -1,
+        })
+      } else expect(moveSpy).not.toHaveBeenCalled()
+    } finally {
+      moveSpy.mockRestore()
+    }
+  })
+
+  test.each([
+    [true, true], [true, false], [false, true], [false, false],
+  ])('routing promotes only new tabs, including inherited parents (new=%s, inherited=%s)', async (isNew, inherited) => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeMoveToTop = true
+    Settings.state.domainTreeAutoFold = false
+    const panelId = 'routing_panel'
+    Sidebar.panelsById[panelId] = {
+      id: panelId, type: PanelType.tabs, startTabIndex: 0, nextTabIndex: 4,
+    } as any
+    const ordinary = new MTab({ id: 2200, panelId, index: 0 })
+    const tree = new MTab({
+      id: 2201, panelId, index: 1, isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('example.com', 'Example'),
+    })
+    const existing = new MTab({
+      id: 2202, panelId, index: 2, lvl: 1, parentId: tree.id, url: 'https://example.com/old',
+    })
+    const tab = new MTab({
+      id: 2203, panelId, index: 3, lvl: inherited ? 1 : 0,
+      parentId: inherited ? tree.id : -1, url: 'https://example.com/new', newForDomainTree: isNew,
+    })
+    Tabs.list.length = 0
+    Tabs.list.push(ordinary, tree, existing, tab)
+    for (const t of Tabs.list) Tabs.byId[t.id] = t
+    const moveSpy = vi.spyOn(Tabs, 'move').mockImplementation(async tabs => {
+      if (tabs.length === 1) {
+        tab.parentId = tree.id
+        tab.lvl = 1
+      }
+    })
+    try {
+      await DomainTrees.handleDomainTab(tab.id)
+      const promotions = moveSpy.mock.calls.filter(([, , dst]) => dst.index === 0)
+      expect(promotions).toHaveLength(isNew ? 1 : 0)
+      if (isNew) expect(promotions[0][0]).toEqual([tree, existing, tab])
+      expect(tab.newForDomainTree).toBe(false)
+      moveSpy.mockClear()
+      await DomainTrees.handleDomainTab(tab.id)
+      expect(moveSpy).not.toHaveBeenCalled()
+    } finally {
+      moveSpy.mockRestore()
+    }
   })
 
   test('getIndexForNewTab does not insert new tab above named domain trees', () => {

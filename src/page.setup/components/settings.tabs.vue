@@ -100,6 +100,12 @@ section(ref="el")
     :default="DEFAULT_SETTINGS.tabsUnreadMark"
     @update:value="Settings.saveDebounced(150)")
   ToggleField(
+    label="settings.tabs_highlight_new"
+    dbg="tabsHighlightNew"
+    v-model:value="Settings.state.tabsHighlightNew"
+    :default="DEFAULT_SETTINGS.tabsHighlightNew"
+    @update:value="Settings.saveDebounced(150)")
+  ToggleField(
     label="settings.tabs_badge"
     dbg="tabsBadge"
     v-model:value="Settings.state.tabsBadge"
@@ -540,6 +546,13 @@ section(ref="el")
         v-model:value="Settings.state.domainTreeNewTabPosition"
         :default="DEFAULT_SETTINGS.domainTreeNewTabPosition"
         :opts="Settings.getOpts('domainTreeNewTabPosition')"
+        :inactive="!Settings.state.domainTrees"
+        @update:value="Settings.saveDebounced(150)")
+      ToggleField(
+        label="settings.domain_tree_move_to_top"
+        dbg="domainTreeMoveToTop"
+        v-model:value="Settings.state.domainTreeMoveToTop"
+        :default="DEFAULT_SETTINGS.domainTreeMoveToTop"
         :inactive="!Settings.state.domainTrees"
         @update:value="Settings.saveDebounced(150)")
       ToggleField(
