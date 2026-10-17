@@ -1,5 +1,18 @@
 # Changelog
 
+## v5.7.0 - 2026.10.17
+
+### Added
+
+- Inline domain tree rule card editor in settings with interactive domain/regex chips, live validation, active toggles, and priority reordering
+- Per-rule domain tree configuration: grouping mode (`1+ tabs`, `2+ tabs`, `Exclude`), nested sub-tree toggle, pin-to-top, target panel assignment, and custom tree color
+- Domain tree inactivity auto-collapse timeout setting with preset and custom minute intervals
+
+### Fixed
+
+- Keep domain tree header selected and folded when folding an active child tab
+- Defer domain tree startup scan until after initial tab list render
+
 ## v5.6.5 - 2026.10.13
 
 ### Added
