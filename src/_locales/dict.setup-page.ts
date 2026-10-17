@@ -4022,6 +4022,33 @@ Available parameters:
   'settings.domain_tree_auto_fold': {
     en: 'Auto-fold domain trees',
   },
+  'settings.domain_tree_collapse_timeout': {
+    en: 'Collapse domain trees after no tab in them has been activated for',
+  },
+  'settings.domain_tree_collapse_timeout_off': {
+    en: 'Never',
+  },
+  'settings.domain_tree_collapse_timeout_1': {
+    en: '1 minute',
+  },
+  'settings.domain_tree_collapse_timeout_5': {
+    en: '5 minutes',
+  },
+  'settings.domain_tree_collapse_timeout_15': {
+    en: '15 minutes',
+  },
+  'settings.domain_tree_collapse_timeout_30': {
+    en: '30 minutes',
+  },
+  'settings.domain_tree_collapse_timeout_60': {
+    en: '1 hour',
+  },
+  'settings.domain_tree_collapse_timeout_custom': {
+    en: 'Custom',
+  },
+  'settings.domain_tree_collapse_timeout_custom_minutes': {
+    en: 'Custom inactivity timeout (minutes)',
+  },
   'settings.domain_tree_move_to_top': {
     en: 'Move domain trees to the top when a new tab joins them',
   },

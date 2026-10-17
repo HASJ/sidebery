@@ -137,11 +137,17 @@ export function updateSettings(settings?: SettingsState | null): void {
     prev.domainTrees !== next.domainTrees ||
     prev.domainTreesUniversal !== next.domainTreesUniversal ||
     JSON.stringify(prev.domainTreeRules) !== JSON.stringify(next.domainTreeRules)
+  const domainTreeCollapseChanged =
+    prev.domainTrees !== next.domainTrees ||
+    prev.domainTreeCollapseTimeout !== next.domainTreeCollapseTimeout ||
+    prev.domainTreeCollapseTimeoutCustom !== next.domainTreeCollapseTimeoutCustom
 
   // Update settings of this instance
   Utils.updateObject(Settings.state, settings, Settings.state)
 
   Settings.updPrecalcSettings()
+
+  if (Info.isSidebar && domainTreeCollapseChanged) Tabs.DomainTrees.updateInactivityTimer()
 
   if (Info.isSidebar && newTabCtxReopen) updateWebReqHandlers()
 

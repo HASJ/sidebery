@@ -169,6 +169,8 @@ export interface SettingsState {
   domainTreeRules: DomainTreeRuleConfig[]
   domainTreeNewTabPosition: (typeof SETTINGS_OPTIONS.domainTreeNewTabPosition)[number]
   domainTreeAutoFold: boolean
+  domainTreeCollapseTimeout: (typeof SETTINGS_OPTIONS.domainTreeCollapseTimeout)[number]
+  domainTreeCollapseTimeoutCustom: number
   domainTreeMoveToTop: boolean
   domainTreeConfirmClose: boolean
 

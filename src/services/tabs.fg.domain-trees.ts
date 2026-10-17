@@ -171,6 +171,38 @@ export function isPendingPlaceholder(id: ID): boolean {
 // Map of placeholderId -> last active child tabId
 export const lastActiveChildMap = new Map<ID, ID>()
 
+let inactivityTimer: number | undefined
+
+export function stopInactivityTimer(): void {
+  clearInterval(inactivityTimer)
+  inactivityTimer = undefined
+}
+
+export function updateInactivityTimer(): void {
+  stopInactivityTimer()
+  if (!Tabs.ready || !Settings.state.domainTrees) return
+  const timeout = Settings.state.domainTreeCollapseTimeout
+  const minutes =
+    timeout === 'custom' ? Settings.state.domainTreeCollapseTimeoutCustom : Number(timeout)
+  if (!Number.isFinite(minutes) || minutes < 1) return
+
+  inactivityTimer = window.setInterval(() => {
+    const now = Date.now()
+    for (const tree of Tabs.list) {
+      if (!isDomainTreeGroup(tree) || tree.folded || tree.invisible || !tree.isParent) continue
+      const branch = Tabs.getBranch(tree)
+      if (branch.some(tab => tab.active)) continue
+      const lastAccessed = branch.reduce(
+        (latest, tab) => Math.max(latest, tab.lastAccessed ?? 0),
+        0
+      )
+      if (lastAccessed && now - lastAccessed >= minutes * 60_000) {
+        Tabs.foldTabsBranch(tree.id)
+      }
+    }
+  }, 5000)
+}
+
 export function recordActiveChild(tab: T.Tab): void {
   if (!tab || tab.parentId === NOID || isDomainTreeGroup(tab)) return
   let p: T.Tab | undefined = tab

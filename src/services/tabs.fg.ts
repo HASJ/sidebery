@@ -180,6 +180,7 @@ export function getStatus(tab: T.Tab): TabStatus {
 }
 
 let waitingForTabsReadiness: (() => void)[] = []
+let domainTreeStartupRaf = 0
 export async function waitForTabsReady(): Promise<void> {
   if (Tabs.ready) return
 
@@ -211,6 +212,13 @@ export async function load(src?: LoadSrc): Promise<void> {
     increment: 250,
     count: 10,
   })
+
+  if (Settings.state.domainTrees) {
+    Tabs.DomainTrees.log(
+      'INFO', 'Startup',
+      `Restored ${Tabs.list.length} tabs in ${(performance.now() - ts).toFixed(1)}ms`
+    )
+  }
 
   // Scroll to active tab
   const activeTab = Tabs.byId[Tabs.activeId]
@@ -252,9 +260,9 @@ export async function load(src?: LoadSrc): Promise<void> {
   if (Settings.state.colorizeTabsBranches) Tabs.colorizeBranches()
   if (Settings.state.tabsBadge) Tabs.parseBadgeRegexpRules()
   if (Tabs.badgeRulesEnabled) Tabs.updateBadges()
-  if (Settings.state.domainTrees && src !== LoadSrc.SessionOnly) Tabs.DomainTrees.scanExistingTabs()
 
   ready = true
+  Tabs.DomainTrees.updateInactivityTimer()
 
   // Call deferred event handlers
   if (Tabs.deferredEventHandling.length) {
@@ -266,11 +274,31 @@ export async function load(src?: LoadSrc): Promise<void> {
   waitingForTabsReadiness.forEach(cb => cb())
   waitingForTabsReadiness = []
 
+  if (Settings.state.domainTrees) {
+    cancelAnimationFrame(domainTreeStartupRaf)
+    // Let the restored tab list paint before domain-tree maintenance starts.
+    domainTreeStartupRaf = requestAnimationFrame(() => {
+      domainTreeStartupRaf = requestAnimationFrame(() => {
+        domainTreeStartupRaf = 0
+        if (!Tabs.ready || !Settings.state.domainTrees) return
+        Tabs.DomainTrees.log(
+          'INFO', 'Startup',
+          `Starting maintenance after initial render opportunity (${(performance.now() - ts).toFixed(1)}ms)`
+        )
+        if (src === LoadSrc.SessionOnly) Tabs.DomainTrees.cleanEmptyDomainTrees()
+        else Tabs.DomainTrees.scanExistingTabs()
+      })
+    })
+  }
+
   Logs.info(`Tabs.load: Done: ${performance.now() - ts}ms`)
 }
 
 export function unload(): void {
   ready = false
+  cancelAnimationFrame(domainTreeStartupRaf)
+  domainTreeStartupRaf = 0
+  Tabs.DomainTrees.stopInactivityTimer()
   Tabs.resetTabsListeners()
   Tabs.cancelSavingTabData()
   Tabs.cancelCachingTabsData()
@@ -2055,7 +2083,7 @@ export function updateTabsTree(startIndex = 0, endIndex = -1): void {
     foldedBranchRoot.reactive.branchLen = foldedBranchLenCount
   }
 
-  if (Settings.state.domainTrees) {
+  if (Tabs.ready && Settings.state.domainTrees) {
     Tabs.DomainTrees?.cleanEmptyDomainTreesDebounced?.(100)
   }
 }

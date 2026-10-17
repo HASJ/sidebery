@@ -168,6 +168,8 @@ export const DEFAULT_SETTINGS: SettingsState = {
   domainTreeRules: [],
   domainTreeNewTabPosition: 'last_child',
   domainTreeAutoFold: true,
+  domainTreeCollapseTimeout: 'off',
+  domainTreeCollapseTimeoutCustom: 15,
   domainTreeMoveToTop: false,
   domainTreeConfirmClose: true,
 
@@ -398,4 +400,5 @@ export const SETTINGS_OPTIONS = {
   scrollPanelAfterSwitchingTab: ['always', 'mouseleave', 'no'],
   newTabInPanelPos: ['general', 'btn', 'start', 'end'],
   domainTreeNewTabPosition: ['first_child', 'last_child'],
+  domainTreeCollapseTimeout: ['off', '1', '5', '15', '30', '60', 'custom'],
 } as const

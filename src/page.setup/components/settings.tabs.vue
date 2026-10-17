@@ -548,6 +548,24 @@ section(ref="el")
         :opts="Settings.getOpts('domainTreeNewTabPosition')"
         :inactive="!Settings.state.domainTrees"
         @update:value="Settings.saveDebounced(150)")
+      SelectField(
+        label="settings.domain_tree_collapse_timeout"
+        optLabel="settings.domain_tree_collapse_timeout_"
+        dbg="domainTreeCollapseTimeout"
+        v-model:value="Settings.state.domainTreeCollapseTimeout"
+        :default="DEFAULT_SETTINGS.domainTreeCollapseTimeout"
+        :opts="Settings.getOpts('domainTreeCollapseTimeout')"
+        :inactive="!Settings.state.domainTrees"
+        @update:value="Settings.saveDebounced(150)")
+      NumField(
+        v-if="Settings.state.domainTreeCollapseTimeout === 'custom'"
+        label="settings.domain_tree_collapse_timeout_custom_minutes"
+        dbg="domainTreeCollapseTimeoutCustom"
+        v-model:value="Settings.state.domainTreeCollapseTimeoutCustom"
+        :default="DEFAULT_SETTINGS.domainTreeCollapseTimeoutCustom"
+        :minValue="1"
+        :inactive="!Settings.state.domainTrees"
+        @update:value="Settings.saveDebounced(500)")
       ToggleField(
         label="settings.domain_tree_move_to_top"
         dbg="domainTreeMoveToTop"

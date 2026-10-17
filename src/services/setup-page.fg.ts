@@ -77,6 +77,7 @@ export let reactive: SetupPageReactiveState = {
     { active: false, name: 'settings_new_tab_position', lvl: 2 },
     { active: false, name: 'settings_pinned_tabs', lvl: 2 },
     { active: false, name: 'settings_tabs_tree', lvl: 2 },
+    { active: false, name: 'settings_domain_trees', lvl: 2 },
     { active: false, name: 'settings_tabs_colorization', lvl: 2 },
     { active: false, name: 'settings_tabs_preview', lvl: 2 },
     { active: false, name: 'settings_tabs_native', lvl: 2 },

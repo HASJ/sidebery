@@ -9,6 +9,132 @@ import * as Utils from 'src/utils'
 import type { Tab } from 'src/types'
 import { MTab } from 'src/defaults/mocks.tabs.fg'
 
+describe('Domain tree inactivity collapse', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-16T12:00:00Z'))
+    vi.spyOn(Tabs, 'ready', 'get').mockReturnValue(true)
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeCollapseTimeout = '5'
+    Tabs.list.length = 0
+    for (const id of Object.keys(Tabs.byId)) delete Tabs.byId[id]
+  })
+
+  afterEach(() => {
+    DomainTrees.stopInactivityTimer()
+    Settings.resetSettings()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  function addTree() {
+    const tree = new MTab({
+      id: 8000,
+      index: 0,
+      isGroup: true,
+      isParent: true,
+      url: DomainTrees.createDomainTreeUrl('example.com', 'Example'),
+      lastAccessed: Date.now() - 3_600_000,
+    })
+    const child = new MTab({
+      id: 8001,
+      index: 1,
+      lvl: 1,
+      parentId: tree.id,
+      lastAccessed: Date.now() - 3_600_000,
+    })
+    Tabs.list.push(tree, child)
+    Tabs.byId[tree.id] = tree
+    Tabs.byId[child.id] = child
+    return { tree, child }
+  }
+
+  test.each(['1', '5', '15', '30', '60', 'custom'] as const)(
+    'collapses after the selected inactivity duration (%s)',
+    timeout => {
+      Settings.state.domainTreeCollapseTimeout = timeout
+      Settings.state.domainTreeCollapseTimeoutCustom = 7
+      const minutes = timeout === 'custom' ? 7 : Number(timeout)
+      const { tree, child } = addTree()
+      child.lastAccessed = Date.now()
+      const fold = vi.spyOn(Tabs, 'foldTabsBranch').mockImplementation(() => {})
+      DomainTrees.updateInactivityTimer()
+      vi.advanceTimersByTime(minutes * 60_000 - 1)
+      expect(fold).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+      expect(fold).toHaveBeenCalledExactlyOnceWith(tree.id)
+    }
+  )
+
+  test('recent activation in a nested tree delays the outer tree, and active tabs prevent collapse', () => {
+    const { tree, child } = addTree()
+    const nested = new MTab({
+      id: 8002,
+      index: 2,
+      lvl: 2,
+      parentId: child.id,
+      lastAccessed: Date.now(),
+    })
+    Tabs.list.push(nested)
+    Tabs.byId[nested.id] = nested
+    const fold = vi.spyOn(Tabs, 'foldTabsBranch').mockImplementation(() => {})
+    DomainTrees.updateInactivityTimer()
+    vi.advanceTimersByTime(240_000)
+    nested.lastAccessed = Date.now()
+    vi.advanceTimersByTime(240_000)
+    expect(fold).not.toHaveBeenCalled()
+    nested.active = true
+    vi.advanceTimersByTime(120_000)
+    expect(fold).not.toHaveBeenCalled()
+    nested.active = false
+    vi.advanceTimersByTime(5000)
+    expect(fold).toHaveBeenCalledWith(tree.id)
+  })
+
+  test('skips folded trees and active headers', () => {
+    const { tree } = addTree()
+    const fold = vi.spyOn(Tabs, 'foldTabsBranch').mockImplementation(() => {})
+    DomainTrees.updateInactivityTimer()
+    tree.folded = true
+    vi.advanceTimersByTime(5000)
+    tree.folded = false
+    tree.active = true
+    vi.advanceTimersByTime(5000)
+    expect(fold).not.toHaveBeenCalled()
+  })
+
+  test('disabling or stopping the timer prevents collapse', () => {
+    addTree()
+    const fold = vi.spyOn(Tabs, 'foldTabsBranch').mockImplementation(() => {})
+    DomainTrees.updateInactivityTimer()
+    Settings.state.domainTreeCollapseTimeout = 'off'
+    DomainTrees.updateInactivityTimer()
+    vi.advanceTimersByTime(5000)
+    Settings.state.domainTreeCollapseTimeout = '5'
+    DomainTrees.updateInactivityTimer()
+    DomainTrees.stopInactivityTimer()
+    vi.advanceTimersByTime(5000)
+    Settings.state.domainTrees = false
+    DomainTrees.updateInactivityTimer()
+    vi.advanceTimersByTime(5000)
+    expect(fold).not.toHaveBeenCalled()
+  })
+
+  test.each([0, -1, NaN, Infinity])(
+    'invalid custom duration does not collapse trees (%s)',
+    minutes => {
+      addTree()
+      Settings.state.domainTreeCollapseTimeout = 'custom'
+      Settings.state.domainTreeCollapseTimeoutCustom = minutes
+      const fold = vi.spyOn(Tabs, 'foldTabsBranch').mockImplementation(() => {})
+      DomainTrees.updateInactivityTimer()
+      vi.advanceTimersByTime(60_000)
+      expect(fold).not.toHaveBeenCalled()
+    }
+  )
+})
+
 describe('DomainTrees service', () => {
   beforeEach(() => {
     browser.publicSuffix.getDomain = (h: string) => {
