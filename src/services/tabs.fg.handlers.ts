@@ -1898,8 +1898,12 @@ function onTabActivated(info: browser.tabs.ActiveInfo): void {
 
   // Redirect domain tree root tab activation to the last active child in the tree
   if (Settings.state.domainTrees && Tabs.DomainTrees?.isDomainTreeGroup(tab)) {
+    const previousTab = Tabs.byId[info.previousTabId]
+    // Folding an active child activates its header; keep that header selected and folded.
+    const foldingActiveChild =
+      tab.folded && previousTab && Tabs.findAncestor(previousTab, parent => parent.id === tab.id)
     const targetChild = Tabs.DomainTrees.getLastActiveChild(tab)
-    if (targetChild) {
+    if (targetChild && !foldingActiveChild) {
       if (tab.folded) Tabs.expTabsBranch(tab.id)
       browser.tabs.update(targetChild.id, { active: true })
       return
