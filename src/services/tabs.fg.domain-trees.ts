@@ -764,7 +764,7 @@ export async function moveDomainTreeToTop(tree: T.Tab, newTab?: T.Tab): Promise<
     }
   }
   if (newTab && Tabs.byId[newTab.id] === newTab) {
-    if (newTab.invisible) Tabs.expTabsBranch(newTab.parentId)
+    if (newTab.invisible || Tabs.byId[newTab.parentId]?.folded) Tabs.expTabsBranch(newTab.parentId)
     if (!newTab.active) await browser.tabs.update(newTab.id, { active: true })
     Tabs.scrollToTabDebounced(0, newTab.id, true)
   }
@@ -1720,6 +1720,7 @@ async function attachTabsToPlaceholder(
       actTab &&
       (actTab.id === freshPlaceholder.id ||
         actTab.parentId === freshPlaceholder.id ||
+        !!Tabs.findAncestor(actTab, p => p.id === freshPlaceholder.id) ||
         tabsToAttach.some(t => t.id === actTab.id))
 
     if (!isActInBranch && freshPlaceholder.reactive) {

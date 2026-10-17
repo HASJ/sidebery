@@ -1928,6 +1928,21 @@ function onTabActivated(info: browser.tabs.ActiveInfo): void {
         Logs.err('Tabs.onTabActivated: Cannot hide prev active tab', err)
       })
     }
+
+    const foldedAncestor = Tabs.findAncestor(prevActive, p => p.folded)
+    if (foldedAncestor && !prevActive.invisible) {
+      prevActive.invisible = true
+      if (prevActive.reactive) prevActive.reactive.lvl = prevActive.lvl
+      Sidebar.recalcVisibleTabs(prevActive.panelId)
+      if (hideFolded) {
+        browser.tabs.hide?.(prevActive.id).catch(err => {
+          Logs.err('Tabs.onTabActivated: Cannot hide prev active tab', err)
+        })
+      }
+      if (Settings.state.discardFolded) {
+        Tabs.autoDiscardFolded(foldedAncestor)
+      }
+    }
   }
 
   tab.reactive.active = tab.active = true

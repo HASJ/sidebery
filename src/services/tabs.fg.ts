@@ -1653,11 +1653,47 @@ export function recalcBranchLen(id: ID): void {
   tab.reactive.branchLen = branchLen
 }
 
+export function syncActiveTabInFoldedDomainTree(): T.Tab | undefined {
+  if (!Settings.state.domainTrees) return
+  const activeTab = Tabs.byId[Tabs.activeId]?.active
+    ? Tabs.byId[Tabs.activeId]
+    : Tabs.list.find(t => t && t.active)
+  if (
+    !activeTab ||
+    activeTab.pinned ||
+    activeTab.removing ||
+    activeTab.isGroup ||
+    Tabs.DomainTrees?.isDomainTreeGroup(activeTab)
+  ) {
+    return
+  }
+
+  let visibleAncestor: T.Tab | undefined
+  let hasFoldedAncestor = false
+  let inDomainTree = false
+  let p = Tabs.byId[activeTab.parentId]
+  while (p) {
+    if (!visibleAncestor && !p.invisible) visibleAncestor = p
+    if (p.folded) hasFoldedAncestor = true
+    if (Tabs.DomainTrees?.isDomainTreeGroup(p)) inDomainTree = true
+    p = Tabs.byId[p.parentId]
+  }
+
+  if (inDomainTree && hasFoldedAncestor && visibleAncestor) {
+    const visLvl = visibleAncestor.reactive?.lvl ?? visibleAncestor.lvl
+    activeTab.invisible = false
+    if (activeTab.reactive) activeTab.reactive.lvl = visLvl + 1
+    return activeTab
+  }
+}
+
 export function autoDiscardFolded(rootTab: T.Tab) {
   if (!Settings.state.discardFolded) return
 
   if (Settings.state.discardFoldedDelay === 0) {
-    const childIds = Tabs.getBranch(rootTab, false).map(t => t.id)
+    const childIds = Tabs.getBranch(rootTab, false)
+      .filter(t => !t.active)
+      .map(t => t.id)
     if (!childIds.length) return
 
     browser.tabs.discard(childIds)
@@ -1670,7 +1706,9 @@ export function autoDiscardFolded(rootTab: T.Tab) {
     rootTab.autoUnloadFoldedTimeout = setTimeout(() => {
       const parentTab = Tabs.byId[rootTab.id]
       if (parentTab?.isParent && parentTab.folded) {
-        const childIds = Tabs.getBranch(rootTab, false).map(t => t.id)
+        const childIds = Tabs.getBranch(rootTab, false)
+          .filter(t => !t.active)
+          .map(t => t.id)
         if (!childIds.length) return
 
         browser.tabs.discard(childIds)
@@ -1693,6 +1731,12 @@ export function foldTabsBranch(rootTabId: ID): void {
   const hideFolded = Settings.state.hideFoldedTabs
   const hideFoldedParent = hideFolded && Settings.state.hideFoldedParent === 'any'
   const hideFoldedGroup = hideFolded && Settings.state.hideFoldedParent === 'group'
+  const isDomainTreeBranch =
+    Settings.state.domainTrees &&
+    !!(
+      Tabs.DomainTrees?.isDomainTreeGroup(rootTab) ||
+      Tabs.findAncestor(rootTab, p => !!Tabs.DomainTrees?.isDomainTreeGroup(p))
+    )
 
   rootTab.folded = true
   rootTab.reactive.folded = true
@@ -1701,9 +1745,24 @@ export function foldTabsBranch(rootTabId: ID): void {
   for (let i = rootTab.index + 1; i < Tabs.list.length; i++) {
     const t = Tabs.list[i]
     if (t.lvl <= rootTab.lvl) break
-    if (t.active) browser.tabs.update(rootTabId, { active: true })
-    if (!t.invisible) {
+    const keepActiveVisible =
+      isDomainTreeBranch &&
+      t.active &&
+      !t.isGroup &&
+      !Tabs.DomainTrees?.isDomainTreeGroup(t)
+    if (t.active && !keepActiveVisible) browser.tabs.update(rootTabId, { active: true })
+    if (keepActiveVisible) {
+      const visibleParent = rootTab.invisible
+        ? Tabs.findAncestor(rootTab, p => !p.invisible)
+        : rootTab
+      const visLvl = visibleParent
+        ? (visibleParent.reactive?.lvl ?? visibleParent.lvl)
+        : rootTab.lvl
+      t.invisible = false
+      if (t.reactive) t.reactive.lvl = visLvl + 1
+    } else if (!t.invisible) {
       t.invisible = true
+      if (t.reactive) t.reactive.lvl = t.lvl
       toHide.push(t.id)
     }
     len++
@@ -1778,6 +1837,7 @@ export function expTabsBranch(rootTabId: ID, noRecursive?: boolean, noAutoFold?:
     if (tab.parentId === rootTabId || toShow.includes(tab.parentId)) {
       if (tab.invisible && (tab.parentId === rootTabId || !preserve.includes(tab.parentId))) {
         tab.invisible = false
+        if (tab.reactive) tab.reactive.lvl = tab.lvl
         count++
 
         // Don't show sub-parent tabs if they're folded
@@ -1785,10 +1845,14 @@ export function expTabsBranch(rootTabId: ID, noRecursive?: boolean, noAutoFold?:
           tab.folded && !tab.active && (hideFoldedParent || (hideFoldedGroup && tab.isGroup))
 
         if (!leaveHidden) toShow.push(tab.id)
+      } else if (!tab.invisible && (tab.parentId === rootTabId || !preserve.includes(tab.parentId))) {
+        if (tab.reactive) tab.reactive.lvl = tab.lvl
+        if (!tab.folded) toShow.push(tab.id)
       }
     }
   }
 
+  syncActiveTabInFoldedDomainTree()
   if (!rootTab.invisible) Sidebar.recalcVisibleTabs(rootTab.panelId)
 
   // Auto fold
@@ -2082,6 +2146,8 @@ export function updateTabsTree(startIndex = 0, endIndex = -1): void {
   if (foldedBranchLvl > -1 && foldedBranchRoot) {
     foldedBranchRoot.reactive.branchLen = foldedBranchLenCount
   }
+
+  syncActiveTabInFoldedDomainTree()
 
   if (Tabs.ready && Settings.state.domainTrees) {
     Tabs.DomainTrees?.cleanEmptyDomainTreesDebounced?.(100)
