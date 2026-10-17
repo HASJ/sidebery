@@ -1,5 +1,11 @@
 # Changelog
 
+## v5.7.1 - 2026.10.17
+
+### Fixed
+
+- Domain trees: keep the active child tab displayed directly under a manually collapsed domain tree while hiding inactive tabs and intermediate sub-groups
+
 ## v5.7.0 - 2026.10.17
 
 ### Added
