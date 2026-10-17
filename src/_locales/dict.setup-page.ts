@@ -4068,7 +4068,61 @@ Available parameters:
     en: 'Bottom of tree (last child)',
   },
   'settings.domain_tree_rules_note': {
-    en: 'Specify domain rules (e.g. "Media: youtube|youtu.be|spotify|bandcamp" or "youtube.com|youtu.be"). One rule per line.',
+    en: 'Rules are evaluated from top to bottom. Add domains, service names, or /regex/ patterns.',
+  },
+  'settings.domain_tree_rules_add_btn': {
+    en: '+ Add rule',
+  },
+  'settings.domain_tree_rules_empty': {
+    en: 'No custom domain rules configured yet',
+  },
+  'settings.domain_tree_rule_unnamed': {
+    en: 'Auto-named rule',
+  },
+  'settings.domain_tree_rule_name_label': {
+    en: 'Tree name',
+  },
+  'settings.domain_tree_rule_name_placeholder': {
+    en: 'Auto from domain (or enter e.g. Media, Dev...)',
+  },
+  'settings.domain_tree_rule_patterns_label': {
+    en: 'Domains & URL patterns',
+  },
+  'settings.domain_tree_rule_pattern_placeholder': {
+    en: 'Add domain (e.g. youtube.com, spotify) or /regex/ and press Enter...',
+  },
+  'settings.domain_tree_rule_pattern_add_btn': {
+    en: 'Add',
+  },
+  'settings.domain_tree_rule_pattern_invalid': {
+    en: 'Invalid pattern or regular expression',
+  },
+  'settings.domain_tree_rule_mode_label': {
+    en: 'Grouping mode',
+  },
+  'settings.domain_tree_rule_mode_group_1': {
+    en: 'Group immediately (1+ tabs)',
+  },
+  'settings.domain_tree_rule_mode_group_2': {
+    en: 'Group at 2+ tabs',
+  },
+  'settings.domain_tree_rule_mode_exclude': {
+    en: 'Exclude (never group)',
+  },
+  'settings.domain_tree_rule_subtrees_label': {
+    en: 'Group subdomains & multi-domains into nested sub-trees',
+  },
+  'settings.domain_tree_rule_pin_top_label': {
+    en: 'Pin tree to the top of the panel',
+  },
+  'settings.domain_tree_rule_panel_label': {
+    en: 'Target panel',
+  },
+  'settings.domain_tree_rule_panel_none': {
+    en: 'Current panel (no move)',
+  },
+  'settings.domain_tree_rule_color_label': {
+    en: 'Tree color',
   },
   'settings.domain_trees_recalc': {
     en: 'Group open tabs now',

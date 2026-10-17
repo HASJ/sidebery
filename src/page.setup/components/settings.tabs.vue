@@ -580,15 +580,118 @@ section(ref="el")
         :default="DEFAULT_SETTINGS.domainTreeConfirmClose"
         :inactive="!Settings.state.domainTrees"
         @update:value="Settings.saveDebounced(150)")
-      TextField.domainTreeRulesField(
-        label="settings.domain_tree_rules"
-        dbg="domainTreeRules"
-        v-model:value="domainTreeRulesInput"
-        :or="'---'"
-        :resize="true"
-        :inactive="!Settings.state.domainTrees"
-        :fnote="translate('settings.domain_tree_rules_note')"
-        @update:value="onDomainTreeRulesUpdate")
+      .dt-rules-section(:data-inactive="!Settings.state.domainTrees")
+        .dt-rules-header
+          .dt-rules-title
+            .text {{translate('settings.domain_tree_rules')}}
+            .count(v-if="Settings.state.domainTreeRules?.length") {{Settings.state.domainTreeRules.length}}
+          .btn.dt-add-rule-btn(@click="addDomainTreeRule") {{translate('settings.domain_tree_rules_add_btn')}}
+        .dt-rules-note {{translate('settings.domain_tree_rules_note')}}
+        .dt-rules-empty(v-if="!Settings.state.domainTreeRules?.length")
+          .text {{translate('settings.domain_tree_rules_empty')}}
+        .dt-rules-list(v-else)
+          .dt-rule-card(
+            v-for="(rule, idx) in Settings.state.domainTreeRules"
+            :key="rule.id"
+            :data-active="rule.active !== false"
+            :data-expanded="expandedRuleId === rule.id"
+            :data-mode="rule.mode || 'group_1'"
+            :data-color="rule.color || 'toolbar'")
+            .dt-rule-card-header(@click="toggleExpandRule(rule.id)")
+              .dt-rule-color-dot(:data-color="rule.color || 'toolbar'")
+              .dt-rule-main
+                .dt-rule-name(:class="{ '-unnamed': !rule.name }") {{getRuleDisplayName(rule)}}
+                .dt-rule-chips-summary(v-if="getRulePatternsList(rule).length")
+                  .dt-mini-chip(
+                    v-for="pat in getRulePatternsList(rule).slice(0, 3)"
+                    :key="pat"
+                    :data-regex="pat.startsWith('/')") {{pat}}
+                  .dt-mini-chip.-more(v-if="getRulePatternsList(rule).length > 3") +{{getRulePatternsList(rule).length - 3}}
+              .dt-rule-badges
+                .dt-badge.-mode(:data-mode="rule.mode || 'group_1'") {{getRuleModeBadge(rule)}}
+                .dt-badge.-pin(
+                  v-if="rule.mode !== 'exclude' && isRulePinnedToTop(rule)"
+                  :title="translate('settings.domain_tree_rule_pin_top_label')") 📌
+                .dt-badge.-flat(
+                  v-if="rule.mode !== 'exclude' && rule.enableSubTrees === false"
+                  :title="translate('settings.domain_tree_rule_subtrees_label')") Flat
+                .dt-badge.-panel(
+                  v-if="rule.mode !== 'exclude' && getRulePanelName(rule)") {{getRulePanelName(rule)}}
+              .dt-rule-actions(@click.stop)
+                ToggleInput(
+                  :value="rule.active !== false"
+                  @update:value="toggleRuleActive(rule, $event)")
+                .card-ctrl.-up(
+                  :data-inactive="idx === 0"
+                  @click="moveRule(idx, -1)")
+                  svg: use(href="#icon_expand")
+                .card-ctrl.-down(
+                  :data-inactive="idx === Settings.state.domainTreeRules.length - 1"
+                  @click="moveRule(idx, 1)")
+                  svg: use(href="#icon_expand")
+                .card-ctrl.-exp(
+                  :data-expanded="expandedRuleId === rule.id"
+                  @click="toggleExpandRule(rule.id)")
+                  svg: use(href="#icon_expand")
+                .card-ctrl.-rm(@click="removeRule(idx)")
+                  svg: use(href="#icon_remove")
+            .dt-rule-card-body(v-if="expandedRuleId === rule.id")
+              .dt-field-row
+                .dt-field-label {{translate('settings.domain_tree_rule_name_label')}}
+                input.dt-text-input(
+                  type="text"
+                  :value="rule.name || ''"
+                  :placeholder="translate('settings.domain_tree_rule_name_placeholder')"
+                  @input="onRuleNameInput(rule, $event)")
+              .dt-field-col
+                .dt-field-label {{translate('settings.domain_tree_rule_patterns_label')}}
+                .dt-chips-box
+                  .dt-chip(
+                    v-for="(pat, pIdx) in getRulePatternsList(rule)"
+                    :key="pat + '_' + pIdx"
+                    :data-regex="pat.startsWith('/')")
+                    span.dt-chip-tag(v-if="pat.startsWith('/')") re
+                    span.dt-chip-text(@click="editPatternChip(rule, pIdx)") {{pat}}
+                    span.dt-chip-rm(@click="removePatternChip(rule, pIdx)") ×
+                  .dt-chip-input-row
+                    input.dt-chip-input(
+                      type="text"
+                      :value="patternInputs[rule.id] || ''"
+                      :data-invalid="!!patternErrors[rule.id]"
+                      :placeholder="translate('settings.domain_tree_rule_pattern_placeholder')"
+                      @input="onPatternInputChange(rule.id, $event)"
+                      @keydown="onPatternInputKeydown(rule, $event)"
+                      @blur="onPatternInputBlur(rule)")
+                    .btn.dt-chip-add-btn(@click="commitPatternInput(rule)") {{translate('settings.domain_tree_rule_pattern_add_btn')}}
+                .dt-pattern-error(v-if="patternErrors[rule.id]") {{patternErrors[rule.id]}}
+              SelectField.-no-separator(
+                label="settings.domain_tree_rule_mode_label"
+                optLabel="settings.domain_tree_rule_mode_"
+                :value="rule.mode || 'group_1'"
+                :opts="['group_1', 'group_2', 'exclude']"
+                @update:value="setRuleMode(rule, $event)")
+              template(v-if="rule.mode !== 'exclude'")
+                ToggleField(
+                  label="settings.domain_tree_rule_subtrees_label"
+                  :value="rule.enableSubTrees !== false"
+                  @update:value="setRuleSubTrees(rule, $event)")
+                ToggleField(
+                  label="settings.domain_tree_rule_pin_top_label"
+                  :value="isRulePinnedToTop(rule)"
+                  @update:value="setRulePinToTop(rule, $event)")
+                SelectField(
+                  label="settings.domain_tree_rule_panel_label"
+                  :value="rule.panelId || 'none'"
+                  :opts="rulePanelOpts"
+                  :folded="true"
+                  @update:value="setRulePanel(rule, $event)")
+                SelectField(
+                  label="settings.domain_tree_rule_color_label"
+                  :value="rule.color || 'toolbar'"
+                  :opts="COLOR_OPTS"
+                  :color="rule.color || 'toolbar'"
+                  :icon="'#icon_circle'"
+                  @update:value="setRuleColor(rule, $event)")
       .ctrls(v-if="Settings.state.domainTrees")
         .btn(@click="recalcDomainTrees") {{translate('settings.domain_trees_recalc')}}
         .btn(@click="viewDomainTreesLogs") {{translate('settings.domain_trees_view_logs')}}
@@ -795,19 +898,22 @@ section(ref="el")
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, onMounted, useTemplateRef } from 'vue'
+import { ref, reactive, computed, onMounted, useTemplateRef } from 'vue'
 import * as Utils from 'src/utils'
 import { translate } from 'src/dict'
-import type { TextInputComponent, DomainTreeRuleConfig } from 'src/types'
-import { DEFAULT_SETTINGS, NOID, SETTINGS_OPTIONS } from 'src/defaults'
+import type { TextInputComponent, DomainTreeRuleConfig, DomainTreeRuleMode } from 'src/types'
+import { COLOR_OPTS, DEFAULT_SETTINGS, NOID, SETTINGS_OPTIONS } from 'src/defaults'
 import * as Settings from 'src/services/settings.fg'
 import * as Permissions from 'src/services/permissions.fg'
 import * as SetupPage from 'src/services/setup-page.fg'
+import * as SidebarConf from 'src/services/sidebar-config.fg'
 import * as Tabs from 'src/services/tabs.fg'
+import * as DomainTrees from 'src/services/tabs.fg.domain-trees'
 import * as Windows from 'src/services/windows.fg'
 import * as IPC from 'src/services/ipc'
 import CountField from '../../components/count-field.vue'
 import ToggleField from '../../components/toggle-field.vue'
+import ToggleInput from '../../components/toggle-input.vue'
 import SelectField from '../../components/select-field.vue'
 import NumField from '../../components/num-field.vue'
 import TextField from '../../components/text-field.vue'
@@ -964,40 +1070,263 @@ function onTabsBadgeRulesBlur(): void {
   }
 }
 
-function parseDomainTreeRules(raw: string): DomainTreeRuleConfig[] {
-  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
-  return lines.map((line, idx) => {
-    let name: string | undefined
-    let url = line
-    const colonIdx = line.indexOf(':')
-    if (
-      colonIdx !== -1 &&
-      !line.startsWith('http://') &&
-      !line.startsWith('https://') &&
-      !line.startsWith('/')
-    ) {
-      name = line.slice(0, colonIdx).trim()
-      url = line.slice(colonIdx + 1).trim()
-    }
-    return {
-      id: `rule_${idx}`,
-      name,
-      active: true,
-      url,
-    }
-  })
+interface RulePanelOption {
+  value: ID
+  icon?: string
+  color?: string
+  title?: string
+  tooltip?: string
 }
 
-const domainTreeRulesInput = ref(
-  Settings.state.domainTreeRules
-    ?.map(r => (r.name ? `${r.name}: ${r.url}` : r.url))
-    .join('\n') ?? ''
-)
+const expandedRuleId = ref<ID | null>(null)
+const patternInputs = reactive<Record<string, string>>({})
+const patternErrors = reactive<Record<string, string>>({})
 
-function onDomainTreeRulesUpdate(val: string): void {
-  domainTreeRulesInput.value = val
-  Settings.state.domainTreeRules = parseDomainTreeRules(val)
-  Settings.saveDebounced(500)
+const rulePanelOpts = computed<RulePanelOption[]>(() => {
+  const noneLabel = translate('settings.domain_tree_rule_panel_none')
+  const result: RulePanelOption[] = [
+    {
+      value: 'none',
+      color: 'inactive',
+      icon: '#icon_none',
+      title: noneLabel,
+      tooltip: noneLabel,
+    },
+  ]
+
+  for (const id of SidebarConf.reactive.nav) {
+    const p = SidebarConf.reactive.panels[id]
+    if (!Utils.isTabsPanel(p)) continue
+    const icon = p.iconIMG ? p.iconIMG : '#' + p.iconSVG
+    result.push({ value: p.id, color: p.color, icon, title: p.name, tooltip: p.name })
+  }
+
+  return result
+})
+
+function ensureNormalizedDomainTreeRules(): void {
+  if (!Array.isArray(Settings.state.domainTreeRules)) {
+    Settings.state.domainTreeRules = []
+    return
+  }
+  Settings.state.domainTreeRules = Settings.state.domainTreeRules.map((r, idx) =>
+    DomainTrees.normalizeDomainTreeRule(r, idx)
+  )
+}
+
+function getRulePatternsList(rule: DomainTreeRuleConfig): string[] {
+  return DomainTrees.getRulePatterns(rule)
+}
+
+function getRuleDisplayName(rule: DomainTreeRuleConfig): string {
+  if (rule.name?.trim()) return rule.name.trim()
+  const patterns = getRulePatternsList(rule)
+  if (patterns.length > 0) return patterns[0]
+  return translate('settings.domain_tree_rule_unnamed')
+}
+
+function getRuleModeBadge(rule: DomainTreeRuleConfig): string {
+  if (rule.mode === 'exclude') return 'Exclude'
+  if (rule.mode === 'group_2') return '2+ tabs'
+  return '1+ tab'
+}
+
+function isRulePinnedToTop(rule: DomainTreeRuleConfig): boolean {
+  if (rule.pinToTop !== undefined) return !!rule.pinToTop
+  return !!rule.name?.trim()
+}
+
+function getRulePanelName(rule: DomainTreeRuleConfig): string {
+  if (!rule.panelId || rule.panelId === 'none' || rule.panelId === NOID) return ''
+  const panel = SidebarConf.reactive.panels[rule.panelId]
+  return panel?.name || ''
+}
+
+function addDomainTreeRule(): void {
+  if (!Array.isArray(Settings.state.domainTreeRules)) {
+    Settings.state.domainTreeRules = []
+  }
+  const newRule = DomainTrees.normalizeDomainTreeRule(
+    {
+      id: `rule_${Utils.uid()}`,
+      active: true,
+      name: '',
+      url: '',
+      patterns: [],
+      mode: 'group_1',
+      enableSubTrees: true,
+      pinToTop: false,
+      panelId: 'none',
+      color: 'toolbar',
+    },
+    Settings.state.domainTreeRules.length
+  )
+  Settings.state.domainTreeRules.push(newRule)
+  expandedRuleId.value = newRule.id
+  Settings.saveDebounced(150)
+}
+
+function toggleExpandRule(ruleId: ID): void {
+  expandedRuleId.value = expandedRuleId.value === ruleId ? null : ruleId
+}
+
+function toggleRuleActive(rule: DomainTreeRuleConfig, val: boolean): void {
+  rule.active = val
+  Settings.saveDebounced(150)
+}
+
+function moveRule(idx: number, dir: -1 | 1): void {
+  const list = Settings.state.domainTreeRules
+  if (!list) return
+  const targetIdx = idx + dir
+  if (targetIdx < 0 || targetIdx >= list.length) return
+  const [item] = list.splice(idx, 1)
+  list.splice(targetIdx, 0, item)
+  Settings.saveDebounced(150)
+}
+
+function removeRule(idx: number): void {
+  const list = Settings.state.domainTreeRules
+  if (!list || idx < 0 || idx >= list.length) return
+  const [removed] = list.splice(idx, 1)
+  if (removed && expandedRuleId.value === removed.id) {
+    expandedRuleId.value = null
+  }
+  Settings.saveDebounced(150)
+}
+
+function onRuleNameInput(rule: DomainTreeRuleConfig, e: Event): void {
+  const val = (e.target as HTMLInputElement).value
+  const hadName = !!rule.name?.trim()
+  const trimmed = val.trim()
+  rule.name = trimmed || undefined
+  if (!hadName && trimmed && !rule.pinToTop) {
+    rule.pinToTop = true
+  }
+  Settings.saveDebounced(300)
+}
+
+function onPatternInputChange(ruleId: ID, e: Event): void {
+  const key = String(ruleId)
+  patternInputs[key] = (e.target as HTMLInputElement).value
+  if (patternErrors[key]) patternErrors[key] = ''
+}
+
+function commitPatternInput(rule: DomainTreeRuleConfig): boolean {
+  const key = String(rule.id)
+  const raw = (patternInputs[key] || '').trim()
+  if (!raw) {
+    patternErrors[key] = ''
+    return true
+  }
+
+  const tokens = raw.startsWith('/')
+    ? [raw]
+    : raw
+        .split(/[|,]+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+
+  for (const token of tokens) {
+    if (!DomainTrees.isValidRulePattern(token)) {
+      patternErrors[key] = translate('settings.domain_tree_rule_pattern_invalid')
+      return false
+    }
+  }
+
+  const current = DomainTrees.getRulePatterns(rule)
+  for (const token of tokens) {
+    if (!current.includes(token)) {
+      current.push(token)
+    }
+  }
+
+  rule.patterns = current
+  rule.url = current.join('|')
+  patternInputs[key] = ''
+  patternErrors[key] = ''
+  Settings.saveDebounced(150)
+  return true
+}
+
+function onPatternInputKeydown(rule: DomainTreeRuleConfig, e: KeyboardEvent): void {
+  const key = String(rule.id)
+  const currentVal = patternInputs[key] || ''
+
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    commitPatternInput(rule)
+    return
+  }
+
+  if ((e.key === ',' || e.key === '|') && !currentVal.trim().startsWith('/')) {
+    e.preventDefault()
+    commitPatternInput(rule)
+    return
+  }
+
+  if (e.key === 'Backspace' && !currentVal) {
+    const current = DomainTrees.getRulePatterns(rule)
+    if (current.length > 0) {
+      current.pop()
+      rule.patterns = current
+      rule.url = current.join('|')
+      Settings.saveDebounced(150)
+    }
+  }
+}
+
+function onPatternInputBlur(rule: DomainTreeRuleConfig): void {
+  const key = String(rule.id)
+  if ((patternInputs[key] || '').trim()) {
+    commitPatternInput(rule)
+  }
+}
+
+function removePatternChip(rule: DomainTreeRuleConfig, pIdx: number): void {
+  const current = DomainTrees.getRulePatterns(rule)
+  if (pIdx < 0 || pIdx >= current.length) return
+  current.splice(pIdx, 1)
+  rule.patterns = current
+  rule.url = current.join('|')
+  Settings.saveDebounced(150)
+}
+
+function editPatternChip(rule: DomainTreeRuleConfig, pIdx: number): void {
+  const current = DomainTrees.getRulePatterns(rule)
+  if (pIdx < 0 || pIdx >= current.length) return
+  const [chip] = current.splice(pIdx, 1)
+  rule.patterns = current
+  rule.url = current.join('|')
+  const key = String(rule.id)
+  patternInputs[key] = chip
+  patternErrors[key] = ''
+  Settings.saveDebounced(150)
+}
+
+function setRuleMode(rule: DomainTreeRuleConfig, mode: DomainTreeRuleMode): void {
+  rule.mode = mode
+  Settings.saveDebounced(150)
+}
+
+function setRuleSubTrees(rule: DomainTreeRuleConfig, val: boolean): void {
+  rule.enableSubTrees = val
+  Settings.saveDebounced(150)
+}
+
+function setRulePinToTop(rule: DomainTreeRuleConfig, val: boolean): void {
+  rule.pinToTop = val
+  Settings.saveDebounced(150)
+}
+
+function setRulePanel(rule: DomainTreeRuleConfig, panelId: ID): void {
+  rule.panelId = panelId
+  Settings.saveDebounced(150)
+}
+
+function setRuleColor(rule: DomainTreeRuleConfig, color: string): void {
+  rule.color = color
+  Settings.saveDebounced(150)
 }
 
 async function recalcDomainTrees(): Promise<void> {
@@ -1070,6 +1399,8 @@ async function clearDomainTreesLogs(): Promise<void> {
 }
 
 onMounted(() => {
+  ensureNormalizedDomainTreeRules()
+
   SetupPage.registerEl('settings_tabs', el.value)
   SetupPage.registerEl('settings_new_tab_position', newTabPosEl.value)
   SetupPage.registerEl('settings_pinned_tabs', pinTabsEl.value)
