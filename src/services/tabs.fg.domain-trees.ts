@@ -337,9 +337,88 @@ export function domainMatchesPattern(hostname: string, url: string, pattern: str
   return false
 }
 
-export function matchCustomRule(url?: string): DomainMatch | null {
-  if (!url || !Settings.state.domainTrees || !Settings.state.domainTreeRules?.length) return null
-  if (
+export function getRulePatterns(rule?: Partial<T.DomainTreeRuleConfig> | null): string[] {
+  if (!rule) return []
+  if (Array.isArray(rule.patterns) && rule.patterns.length > 0) {
+    return rule.patterns.map(p => p.trim()).filter(Boolean)
+  }
+  const trimmed = (rule.url || '').trim()
+  if (!trimmed) return []
+  if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
+    return [trimmed]
+  }
+  return trimmed
+    .split(/[|,\n]/)
+    .map(p => p.trim())
+    .filter(Boolean)
+}
+
+export function isValidRulePattern(pattern: string): boolean {
+  const trimmed = pattern.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('/')) {
+    const lastSlash = trimmed.lastIndexOf('/')
+    if (lastSlash <= 1) return false
+    const body = trimmed.slice(1, lastSlash)
+    const flags = trimmed.slice(lastSlash + 1)
+    try {
+      new RegExp(body, flags)
+      return true
+    } catch {
+      return false
+    }
+  }
+  return !/\s/.test(trimmed)
+}
+
+export function normalizeDomainTreeRule(
+  rule: Partial<T.DomainTreeRuleConfig>,
+  idx = 0
+): T.DomainTreeRuleConfig {
+  const patterns = getRulePatterns(rule)
+  const url = patterns.length > 0 ? patterns.join('|') : (rule.url || '').trim()
+  const name = rule.name?.trim() || undefined
+  const mode: T.DomainTreeRuleMode =
+    rule.mode === 'group_2' || rule.mode === 'exclude' ? rule.mode : 'group_1'
+  const enableSubTrees = rule.enableSubTrees !== undefined ? !!rule.enableSubTrees : true
+  const pinToTop = rule.pinToTop !== undefined ? !!rule.pinToTop : !!name
+  const panelId = rule.panelId !== undefined ? rule.panelId : 'none'
+  const color = rule.color || 'toolbar'
+
+  return {
+    id: rule.id ?? `rule_${idx}_${Utils.uid()}`,
+    active: rule.active !== undefined ? !!rule.active : true,
+    name,
+    url,
+    patterns,
+    mode,
+    enableSubTrees,
+    pinToTop,
+    panelId,
+    color,
+  }
+}
+
+export function doesPatternMatchUrl(hostname: string, url: string, pattern: string): boolean {
+  const trimmed = pattern.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
+    const lastSlash = trimmed.lastIndexOf('/')
+    const body = trimmed.slice(1, lastSlash)
+    const flags = trimmed.slice(lastSlash + 1)
+    try {
+      const re = new RegExp(body, flags)
+      return re.test(url) || re.test(hostname)
+    } catch {
+      return false
+    }
+  }
+  return domainMatchesPattern(hostname, url, trimmed)
+}
+
+function isInternalOrUnsupportedUrl(url?: string): boolean {
+  if (!url) return true
+  return (
     url.startsWith('about:') ||
     url.startsWith('chrome:') ||
     url.startsWith('moz-extension:') ||
@@ -347,9 +426,12 @@ export function matchCustomRule(url?: string): DomainMatch | null {
     url.startsWith('javascript:') ||
     url.startsWith('data:') ||
     url.includes('/sidebery/')
-  ) {
-    return null
-  }
+  )
+}
+
+export function findMatchingRule(url?: string): T.DomainTreeRuleConfig | null {
+  if (!url || !Settings.state.domainTrees || !Settings.state.domainTreeRules?.length) return null
+  if (isInternalOrUnsupportedUrl(url)) return null
 
   let hostname = ''
   try {
@@ -360,56 +442,48 @@ export function matchCustomRule(url?: string): DomainMatch | null {
   if (!hostname) return null
 
   for (const rule of Settings.state.domainTreeRules) {
-    if (!rule.active || !rule.url) continue
+    if (!rule.active) continue
+    const patterns = getRulePatterns(rule)
+    if (!patterns.length) continue
 
-    let matched = false
-    const trimmed = rule.url.trim()
-    if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
-      const lastSlash = trimmed.lastIndexOf('/')
-      const pattern = trimmed.slice(1, lastSlash)
-      const flags = trimmed.slice(lastSlash + 1)
-      try {
-        const re = new RegExp(pattern, flags)
-        if (re.test(url) || re.test(hostname)) matched = true
-      } catch {
-        // ignore invalid regex
+    for (const part of patterns) {
+      if (doesPatternMatchUrl(hostname, url, part)) {
+        return rule
       }
-    } else {
-      // Plain string or pipe/comma-separated domains e.g. "youtube.com|youtu.be" or "youtube"
-      const parts = trimmed.split(/[|,]/).map(p => p.trim()).filter(Boolean)
-      for (const part of parts) {
-        if (domainMatchesPattern(hostname, url, part)) {
-          matched = true
-          break
-        }
-      }
-    }
-
-    if (matched) {
-      const parts = trimmed.split(/[|,]/).map(p => p.trim()).filter(Boolean)
-      const primaryDomain = parts[0] || trimmed
-      const domainKey = (rule.name || primaryDomain).toLowerCase()
-      const title = rule.name || formatTitle(hostname)
-      return { domainKey, title }
     }
   }
 
   return null
 }
 
-export function matchUniversal(url?: string): DomainMatch | null {
-  if (!url || !Settings.state.domainTrees || !Settings.state.domainTreesUniversal) return null
-  if (
-    url.startsWith('about:') ||
-    url.startsWith('chrome:') ||
-    url.startsWith('moz-extension:') ||
-    url.startsWith('view-source:') ||
-    url.startsWith('javascript:') ||
-    url.startsWith('data:') ||
-    url.includes('/sidebery/')
-  ) {
+export function isExcludedByRule(url?: string): boolean {
+  const rule = findMatchingRule(url)
+  return rule?.mode === 'exclude'
+}
+
+export function matchCustomRule(url?: string): DomainMatch | null {
+  const rule = findMatchingRule(url)
+  if (!rule || rule.mode === 'exclude') return null
+
+  let hostname = ''
+  try {
+    hostname = new URL(url!).hostname
+  } catch {
     return null
   }
+  if (!hostname) return null
+
+  const patterns = getRulePatterns(rule)
+  const primaryDomain = patterns[0] || (rule.url || '').trim()
+  const domainKey = (rule.name || primaryDomain).toLowerCase()
+  const title = rule.name || formatTitle(hostname)
+  return { domainKey, title }
+}
+
+export function matchUniversal(url?: string): DomainMatch | null {
+  if (!url || !Settings.state.domainTrees || !Settings.state.domainTreesUniversal) return null
+  if (isInternalOrUnsupportedUrl(url)) return null
+  if (isExcludedByRule(url)) return null
 
   let hostname = ''
   try {
@@ -425,6 +499,7 @@ export function matchUniversal(url?: string): DomainMatch | null {
 }
 
 export function matchDomain(url?: string): DomainMatch | null {
+  if (isExcludedByRule(url)) return null
   return matchCustomRule(url) || matchUniversal(url)
 }
 
@@ -533,39 +608,102 @@ export function isTabMatchingTree(url?: string, treeKey?: string): boolean {
   return false
 }
 
-export function isCustomRuleDomainKey(domainKey?: string): boolean {
+export function findRuleByDomainKey(domainKey?: string): T.DomainTreeRuleConfig | null {
   if (!domainKey || !Settings.state.domainTrees || !Settings.state.domainTreeRules?.length) {
-    return false
+    return null
   }
-  const key = domainKey.toLowerCase().replace(/^www\./, '')
+  const rawKey = domainKey.toLowerCase().trim()
+  const key = rawKey.replace(/^www\./, '')
   const keyName = key.split('.')[0]
-  return Settings.state.domainTreeRules.some(rule => {
-    if (!rule.active) return false
-    if (rule.name && rule.name.toLowerCase() === key) return true
 
-    const trimmed = (rule.url || '').trim()
-    if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
-      return false
-    }
-    const parts = trimmed.split(/[|,]/).map(p => p.trim().toLowerCase()).filter(Boolean)
-    const primaryDomain = (parts[0] || trimmed).toLowerCase().replace(/^www\./, '')
-    return (
+  for (const rule of Settings.state.domainTreeRules) {
+    if (!rule.active || rule.mode === 'exclude') continue
+    if (rule.id === domainKey) return rule
+    if (rule.name && rule.name.toLowerCase().trim() === rawKey) return rule
+    if (rule.name && rule.name.toLowerCase().trim() === key) return rule
+
+    const patterns = getRulePatterns(rule)
+    const nonRegex = patterns
+      .filter(p => !(p.startsWith('/') && p.lastIndexOf('/') > 0))
+      .map(p => p.toLowerCase())
+    if (!nonRegex.length) continue
+
+    const primaryDomain = nonRegex[0].replace(/^www\./, '')
+    if (
       primaryDomain === key ||
-      parts.includes(key) ||
+      nonRegex.includes(key) ||
       primaryDomain.split('.')[0] === keyName ||
-      parts.some(p => {
+      nonRegex.some(p => {
         const cleanP = p.replace(/^www\./, '')
         return cleanP === key || cleanP.split('.')[0] === keyName
       })
-    )
-  })
+    ) {
+      return rule
+    }
+  }
+  return null
+}
+
+export function getRuleThreshold(domainKey?: string, sampleUrl?: string): number {
+  const rule = (sampleUrl ? findMatchingRule(sampleUrl) : null) ?? findRuleByDomainKey(domainKey)
+  if (rule && rule.mode !== 'exclude') {
+    return rule.mode === 'group_2' ? 2 : 1
+  }
+  return 2
+}
+
+export function areSubTreesEnabledForKey(domainKey?: string): boolean {
+  const rule = findRuleByDomainKey(domainKey)
+  if (rule && rule.enableSubTrees === false) return false
+  return true
+}
+
+export function getRuleTargetPanelId(domainKey?: string, sampleUrl?: string): ID | undefined {
+  const rule = (sampleUrl ? findMatchingRule(sampleUrl) : null) ?? findRuleByDomainKey(domainKey)
+  if (!rule || rule.mode === 'exclude') return undefined
+  if (
+    rule.panelId !== undefined &&
+    rule.panelId !== 'none' &&
+    rule.panelId !== NOID &&
+    Utils.isTabsPanel(Sidebar.panelsById[rule.panelId])
+  ) {
+    return rule.panelId
+  }
+  return undefined
+}
+
+export function applyRuleColorToPlaceholder(placeholder?: T.Tab, domainKey?: string): void {
+  if (!placeholder || !isDomainTreeGroup(placeholder)) return
+  const rule = findRuleByDomainKey(domainKey ?? getDomainTreeKey(placeholder))
+  if (!rule) return
+  if (rule.color && rule.color !== 'toolbar') {
+    if (placeholder.customColor !== rule.color) {
+      placeholder.customColor = rule.color
+      if (placeholder.reactive) placeholder.reactive.customColor = rule.color
+      Tabs.saveTabData?.(placeholder.id)
+    }
+  } else if (rule.color === 'toolbar' && placeholder.customColor) {
+    placeholder.customColor = undefined
+    if (placeholder.reactive) placeholder.reactive.customColor = null
+    Tabs.saveTabData?.(placeholder.id)
+  }
+}
+
+export function isCustomRuleDomainKey(domainKey?: string): boolean {
+  return findRuleByDomainKey(domainKey) !== null
 }
 
 export function isCustomRulePlaceholder(placeholder: T.Tab, contentTabs?: T.Tab[]): boolean {
   const domainKey = getDomainTreeKey(placeholder)
-  if (isCustomRuleDomainKey(domainKey)) return true
+  const keyRule = findRuleByDomainKey(domainKey)
+  if (keyRule) {
+    return keyRule.mode !== 'group_2'
+  }
   if (contentTabs && contentTabs.length > 0) {
-    return contentTabs.some(t => matchCustomRule(t.url) !== null)
+    return contentTabs.some(t => {
+      const r = findMatchingRule(t.url)
+      return r !== null && r.mode !== 'exclude' && r.mode !== 'group_2'
+    })
   }
   return false
 }
@@ -573,11 +711,21 @@ export function isCustomRulePlaceholder(placeholder: T.Tab, contentTabs?: T.Tab[
 export function isNamedDomainRule(domainKey?: string): boolean {
   if (!domainKey || !Settings.state.domainTreeRules?.length) return false
   const normKey = domainKey.toLowerCase().trim()
-  return Settings.state.domainTreeRules.some(r => {
-    if (!r.active || !r.name) return false
-    const normName = r.name.toLowerCase().trim()
-    return normName === normKey || r.id === domainKey
-  })
+
+  for (const r of Settings.state.domainTreeRules) {
+    if (!r.active || r.mode === 'exclude') continue
+    const isMatchByNameOrId =
+      (r.name && r.name.toLowerCase().trim() === normKey) || r.id === domainKey
+    if (isMatchByNameOrId) {
+      return r.pinToTop !== undefined ? r.pinToTop : !!r.name
+    }
+  }
+
+  const rule = findRuleByDomainKey(domainKey)
+  if (rule) {
+    return rule.pinToTop !== undefined ? rule.pinToTop : !!rule.name
+  }
+  return false
 }
 
 export function isNamedDomainTree(tab?: T.Tab): boolean {
@@ -605,14 +753,20 @@ export function getNamedDomainTreeInsertionIndex(panelId: ID): number {
   return targetIndex
 }
 
-export async function moveDomainTreeToTop(tree: T.Tab): Promise<void> {
+export async function moveDomainTreeToTop(tree: T.Tab, newTab?: T.Tab): Promise<void> {
   if (!Settings.state.domainTreeMoveToTop) return
   const panel = Sidebar.panelsById[tree.panelId]
   if (!Utils.isTabsPanel(panel) || !isDomainTreeGroup(tree) || tree.pinned || tree.parentId !== NOID) return
-  if (tree.index === panel.startTabIndex) return
-  const branch = Tabs.getBranch(tree, true)
-  if (branch.length) {
-    await Tabs.move(branch, {}, { index: panel.startTabIndex, panelId: panel.id, parentId: NOID })
+  if (tree.index !== panel.startTabIndex) {
+    const branch = Tabs.getBranch(tree, true)
+    if (branch.length) {
+      await Tabs.move(branch, {}, { index: panel.startTabIndex, panelId: panel.id, parentId: NOID })
+    }
+  }
+  if (newTab && Tabs.byId[newTab.id] === newTab) {
+    if (newTab.invisible) Tabs.expTabsBranch(newTab.parentId)
+    if (!newTab.active) await browser.tabs.update(newTab.id, { active: true })
+    Tabs.scrollToTabDebounced(0, newTab.id, true)
   }
 }
 
@@ -934,6 +1088,7 @@ export async function scanExistingTabs(panelId?: ID): Promise<void> {
   if (!Settings.state.domainTrees) return
   if (scanningExistingTabs) return
   scanningExistingTabs = true
+  const startedAt = performance.now()
 
   log('INFO', 'Scan', `Starting scanExistingTabs(panelId=${panelId ?? 'all'})`)
 
@@ -995,28 +1150,38 @@ export async function scanExistingTabs(panelId?: ID): Promise<void> {
       )
 
       for (const [domainKey, { title, tabs: domainTabs }] of domainGroups) {
-        let placeholder = findExistingDomainPlaceholder(domainKey, panel.id)
+        const rulePanelId = getRuleTargetPanelId(domainKey, domainTabs[0]?.url)
+        const dstPanel =
+          rulePanelId !== undefined && Utils.isTabsPanel(Sidebar.panelsById[rulePanelId])
+            ? (Sidebar.panelsById[rulePanelId] as T.TabsPanel)
+            : panel
 
-        const isCustom =
-          isCustomRuleDomainKey(domainKey) ||
-          domainTabs.some(t => matchCustomRule(t.url) !== null)
-        const threshold = isCustom ? 1 : 2
+        let placeholder = findExistingDomainPlaceholder(domainKey, dstPanel.id)
 
-        const totalDomainTabs = getDomainTabs(domainKey, panel.id)
+        const threshold = getRuleThreshold(domainKey, domainTabs[0]?.url)
+
+        const totalDomainTabs =
+          dstPanel.id === panel.id
+            ? getDomainTabs(domainKey, panel.id)
+            : [...getDomainTabs(domainKey, dstPanel.id), ...domainTabs]
         if (!placeholder && totalDomainTabs.length < threshold) {
           continue
         }
 
         if (!placeholder) {
           log('INFO', 'Scan', `Creating new placeholder for "${domainKey}" (${domainTabs.length} tabs in panel)`)
-          placeholder = await createPlaceholder(domainKey, title, panel.id, domainTabs[0])
+          placeholder = await createPlaceholder(domainKey, title, dstPanel.id, domainTabs[0])
           if (!placeholder) continue
         }
 
-        const tabsToAttach = domainTabs.filter(t => t.parentId !== placeholder!.id)
+        applyRuleColorToPlaceholder(placeholder, domainKey)
+
+        const tabsToAttach = domainTabs.filter(
+          t => t.parentId !== placeholder!.id || t.panelId !== dstPanel.id
+        )
         if (tabsToAttach.length > 0) {
           log('INFO', 'Scan', `Attaching ${tabsToAttach.length} tabs to placeholder ${placeholder.id} (${domainKey})`)
-          await attachTabsToPlaceholder(tabsToAttach, placeholder, panel)
+          await attachTabsToPlaceholder(tabsToAttach, placeholder, dstPanel)
         }
 
         await scanSubDomainTrees(placeholder)
@@ -1031,6 +1196,7 @@ export async function scanExistingTabs(panelId?: ID): Promise<void> {
       )
       for (const tab of topPlaceholders) {
         if (Tabs.byId[tab.id]) {
+          applyRuleColorToPlaceholder(tab)
           await scanSubDomainTrees(tab)
         }
       }
@@ -1040,7 +1206,7 @@ export async function scanExistingTabs(panelId?: ID): Promise<void> {
     }
 
     updateAllDomainTreesFavicons()
-    log('INFO', 'Scan', `Completed scanExistingTabs(panelId=${panelId ?? 'all'})`)
+    log('INFO', 'Scan', `Completed scanExistingTabs(panelId=${panelId ?? 'all'}) in ${(performance.now() - startedAt).toFixed(1)}ms`)
   } catch (err) {
     log('ERROR', 'Scan', `Error in scanExistingTabs: ${err}`, err)
   } finally {
@@ -1097,7 +1263,7 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
       } else {
         // Tab stays inside ancestorTree!
         await scanSubDomainTrees(ancestorTree)
-        if (isNewTab) await moveDomainTreeToTop(ancestorTree)
+        if (isNewTab) await moveDomainTreeToTop(ancestorTree, tab)
         return
       }
     }
@@ -1131,10 +1297,15 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
   if (panelMoveRule && panelMoveRule.panelId !== tab.panelId) {
     targetPanelId = panelMoveRule.panelId
   } else {
-    // Domain Priority: If an existing domain tree already exists in another panel, target that panel
-    const globalPlaceholder = findExistingDomainPlaceholder(domainKey)
-    if (globalPlaceholder) {
-      targetPanelId = globalPlaceholder.panelId
+    const rulePanelId = getRuleTargetPanelId(domainKey, tab.url)
+    if (rulePanelId !== undefined) {
+      targetPanelId = rulePanelId
+    } else {
+      // Domain Priority: If an existing domain tree already exists in another panel, target that panel
+      const globalPlaceholder = findExistingDomainPlaceholder(domainKey)
+      if (globalPlaceholder) {
+        targetPanelId = globalPlaceholder.panelId
+      }
     }
   }
 
@@ -1145,9 +1316,10 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
   let placeholder = findExistingDomainPlaceholder(domainKey, targetPanelId)
 
   if (placeholder) {
+    applyRuleColorToPlaceholder(placeholder, domainKey)
     if (tab.parentId === placeholder.id && tab.panelId === targetPanelId) {
       await scanSubDomainTrees(placeholder)
-      if (isNewTab) await moveDomainTreeToTop(placeholder)
+      if (isNewTab) await moveDomainTreeToTop(placeholder, tab)
       return
     }
 
@@ -1158,11 +1330,11 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
     if (isNamedDomainRule(domainKey)) {
       await ensureNamedDomainTreesAtTop(targetPanelId)
     }
-    if (isNewTab) await moveDomainTreeToTop(placeholder)
+    if (isNewTab) await moveDomainTreeToTop(placeholder, tab)
     return
   }
 
-  // No placeholder exists yet. Check threshold (1+ for custom rules, 2+ for universal)
+  // No placeholder exists yet. Check threshold (1+ or 2+ per rule, 2+ for universal)
   const existingDomainTabs = getDomainTabs(domainKey, targetPanelId)
   const tabIncluded = existingDomainTabs.some(t => t.id === tab.id)
   const allDomainTabs = tabIncluded ? existingDomainTabs : [...existingDomainTabs, tab]
@@ -1173,21 +1345,22 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
     `Tab ${tabId}: domainKey="${domainKey}", allDomainTabs=${allDomainTabs.length} in panel ${targetPanelId}`
   )
 
-  const isCustom = matchCustomRule(tab.url) !== null || isCustomRuleDomainKey(domainKey)
-  const threshold = isCustom ? 1 : 2
+  const threshold = getRuleThreshold(domainKey, tab.url)
 
   if (allDomainTabs.length < threshold) {
-    // Only 1 tab of this domain in universal mode. Remains an ordinary tab.
+    // Below threshold. Remains an ordinary tab.
     return
   }
 
-  // 2+ tabs! Create the placeholder header tab.
+  // Create the placeholder header tab.
   placeholder = await createPlaceholder(domainKey, title, targetPanelId, allDomainTabs[0])
   if (!placeholder) return
 
+  applyRuleColorToPlaceholder(placeholder, domainKey)
+
   // Batch move all domain tabs under the placeholder together
   const tabsToAttach = allDomainTabs.filter(
-    t => t.id !== placeholder!.id && t.parentId !== placeholder!.id
+    t => t.id !== placeholder!.id && (t.parentId !== placeholder!.id || t.panelId !== targetPanelId)
   )
   if (tabsToAttach.length > 0) {
     await attachTabsToPlaceholder(tabsToAttach, placeholder, targetPanel)
@@ -1197,7 +1370,7 @@ export async function handleDomainTab(tabId: ID): Promise<void> {
   if (isNamedDomainRule(domainKey)) {
     await ensureNamedDomainTreesAtTop(targetPanelId)
   }
-  if (isNewTab) await moveDomainTreeToTop(placeholder)
+  if (isNewTab) await moveDomainTreeToTop(placeholder, tab)
   } finally {
     inFlightTabs.delete(tabId)
   }
@@ -1224,13 +1397,14 @@ async function createPlaceholder(
     const existing = findExistingDomainPlaceholder(domainKey, panelId)
     if (existing) {
       log('INFO', 'CreatePlaceholder', `Found existing placeholder ${existing.id} for "${domainKey}"`)
+      applyRuleColorToPlaceholder(existing, domainKey)
       return existing
     }
 
     const isNamed = isNamedDomainRule(domainKey)
     const targetIndex = isNamed
       ? getNamedDomainTreeInsertionIndex(panelId)
-      : firstTab ? firstTab.index : panel.startTabIndex
+      : firstTab && firstTab.panelId === panelId ? firstTab.index : panel.startTabIndex
     const url = createDomainTreeUrl(domainKey, title)
 
     Tabs.setNewTabPosition(targetIndex, NOID, panelId, false, true)
@@ -1254,6 +1428,10 @@ async function createPlaceholder(
         placeholderTab = Tabs.byId[nativeTab.id]
         if (placeholderTab) break
       }
+    }
+
+    if (placeholderTab) {
+      applyRuleColorToPlaceholder(placeholderTab, domainKey)
     }
 
     log('INFO', 'CreatePlaceholder', `Placeholder tab resolved: id=${placeholderTab?.id ?? 'NOT_RESOLVED'}`)
@@ -1353,6 +1531,26 @@ export async function scanSubDomainTrees(parentPlaceholder: T.Tab, depth = 0): P
   const contentTabs = branch.filter(
     t => !isDomainTreeGroup(t) && !t.internal && !t.isGroup && !t.pinned && !Tabs.removingTabs?.includes(t.id)
   )
+
+  if (depth === 0 && !areSubTreesEnabledForKey(parentDomainKey)) {
+    for (const tab of contentTabs) {
+      if (tab.parentId !== freshParent.id) {
+        const dst = {
+          index: tab.index,
+          panelId: freshParent.panelId,
+          parentId: freshParent.id,
+        }
+        await Tabs.move([tab], {}, dst)
+      }
+    }
+    for (const sph of existingSubPlaceholders) {
+      lastActiveChildMap.delete(sph.id)
+      if (sph.folded) Tabs.expTabsBranch(sph.id)
+      await Tabs.removeTabs([sph.id], true)
+    }
+    updateDomainTreeFavicon(freshParent)
+    return
+  }
 
   const subDomainGroups = new Map<string, { title: string; tabs: T.Tab[] }>()
 
@@ -1655,21 +1853,6 @@ export async function checkEmptyOrSinglePlaceholder(placeholderId: ID): Promise<
     )
 
     if (contentTabs.length === 0) {
-      const isRule =
-        isDT &&
-        (isCustomRulePlaceholder(placeholder, contentTabs) ||
-          isNamedDomainRule(getDomainTreeKey(placeholder)))
-
-      if (isRule) {
-        log(
-          'INFO',
-          'CleanEmpty',
-          `Preserving empty rule tree: ${placeholder.id} (${getDomainTreeKey(placeholder)})`
-        )
-        updateDomainTreeFavicon(placeholder)
-        return
-      }
-
       log(
         'WARN',
         'CleanEmpty',

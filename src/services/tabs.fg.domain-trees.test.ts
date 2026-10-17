@@ -1017,7 +1017,7 @@ describe('DomainTrees service', () => {
     moveSpy.mockRestore()
   })
 
-  test('checkEmptyOrSinglePlaceholder preserves custom rule root even with 0 child tabs', async () => {
+  test('checkEmptyOrSinglePlaceholder deletes custom rule root with 0 child tabs', async () => {
     Settings.state.domainTrees = true
     Settings.state.domainTreeRules = [
       {
@@ -1049,8 +1049,7 @@ describe('DomainTrees service', () => {
 
     await DomainTrees.checkEmptyOrSinglePlaceholder(900)
 
-    // The custom root placeholder should NOT be removed!
-    expect(removedIds.length).toBe(0)
+    expect(removedIds).toEqual([placeholder.id])
 
     rmSpy.mockRestore()
   })
@@ -1356,7 +1355,7 @@ describe('DomainTrees service', () => {
     rmSpy.mockRestore()
   })
 
-  test('cleanEmptyDomainTrees deletes empty group tabs while preserving empty custom rule trees', async () => {
+  test('cleanEmptyDomainTrees deletes empty group tabs and custom rule trees', async () => {
     Settings.state.domainTrees = true
     Settings.state.domainTreeRules = [
       { id: 'rule_media', name: 'Media', active: true, url: 'youtube|spotify' },
@@ -1407,7 +1406,7 @@ describe('DomainTrees service', () => {
 
     expect(removedIds).toContain(400)
     expect(removedIds).toContain(401)
-    expect(removedIds).not.toContain(402)
+    expect(removedIds).toContain(402)
 
     rmSpy.mockRestore()
   })
@@ -1846,6 +1845,63 @@ describe('DomainTrees service', () => {
     moveSpy.mockRestore()
   })
 
+  test.each([false, true])('reveals the new tab after promotion, including nested folded trees (nested=%s)', async nested => {
+    Settings.state.domainTreeMoveToTop = true
+    const panelId = 'reveal_panel'
+    Sidebar.panelsById[panelId] = {
+      id: panelId, type: PanelType.tabs, startTabIndex: 0, nextTabIndex: 4,
+    } as any
+    const tree = new MTab({
+      id: 2300, index: 1, panelId, isGroup: true, folded: true,
+      url: DomainTrees.createDomainTreeUrl('example.com', 'Example'),
+    })
+    const subTree = new MTab({
+      id: 2301, index: 2, panelId, lvl: 1, parentId: tree.id,
+      isGroup: true, folded: true, invisible: true,
+      url: DomainTrees.createDomainTreeUrl('news.example.com', 'News'),
+    })
+    const tab = new MTab({
+      id: 2302, index: 3, panelId, lvl: nested ? 2 : 1,
+      parentId: nested ? subTree.id : tree.id, invisible: true,
+    })
+    Tabs.list.length = 0
+    Tabs.list.push(new MTab({ id: 2299 }), tree, ...(nested ? [subTree] : []), tab)
+    for (const item of Tabs.list) Tabs.byId[item.id] = item
+    const move = vi.spyOn(Tabs, 'move').mockResolvedValue()
+    const expand = vi.spyOn(Tabs, 'expTabsBranch').mockImplementation(() => {})
+    const scroll = vi.spyOn(Tabs, 'scrollToTabDebounced').mockImplementation(() => {})
+    const activate = vi.spyOn(browser.tabs, 'update').mockResolvedValue({} as browser.tabs.Tab)
+    try {
+      await DomainTrees.moveDomainTreeToTop(tree, tab)
+      expect(move).toHaveBeenCalled()
+      expect(expand).toHaveBeenCalledWith(tab.parentId)
+      expect(scroll).toHaveBeenCalledWith(0, tab.id, true)
+      expect(activate).toHaveBeenCalledExactlyOnceWith(tab.id, { active: true })
+      expect(move.mock.invocationCallOrder[0]).toBeLessThan(scroll.mock.invocationCallOrder[0])
+
+      move.mockClear()
+      activate.mockClear()
+      scroll.mockClear()
+      tree.index = 0
+      await DomainTrees.moveDomainTreeToTop(tree, tab)
+      expect(move).not.toHaveBeenCalled()
+      expect(activate).toHaveBeenCalledExactlyOnceWith(tab.id, { active: true })
+      expect(scroll).toHaveBeenCalledWith(0, tab.id, true)
+
+      activate.mockClear()
+      scroll.mockClear()
+      Settings.state.domainTreeMoveToTop = false
+      await DomainTrees.moveDomainTreeToTop(tree, tab)
+      expect(activate).not.toHaveBeenCalled()
+      expect(scroll).not.toHaveBeenCalled()
+    } finally {
+      move.mockRestore()
+      expand.mockRestore()
+      scroll.mockRestore()
+      activate.mockRestore()
+    }
+  })
+
   test.each([true, false])('promotes an entire receiving domain tree only when enabled (%s)', async enabled => {
     Settings.state.domainTreeMoveToTop = enabled
     const panelId = 'promotion_panel'
@@ -2254,6 +2310,230 @@ describe('DomainTrees service', () => {
     confirmSpy.mockRestore()
     browserRmSpy.mockRestore()
   })
+
+  test('getRulePatterns, isValidRulePattern, and normalizeDomainTreeRule handle legacy url and structured patterns', () => {
+    expect(DomainTrees.isValidRulePattern('youtube.com')).toBe(true)
+    expect(DomainTrees.isValidRulePattern('/github\\.com/i')).toBe(true)
+    expect(DomainTrees.isValidRulePattern('/[unclosed/')).toBe(false)
+    expect(DomainTrees.isValidRulePattern('invalid space')).toBe(false)
+    expect(DomainTrees.isValidRulePattern('')).toBe(false)
+
+    const normalized = DomainTrees.normalizeDomainTreeRule({
+      id: 'r1',
+      name: 'Media',
+      url: 'youtube.com | youtu.be, spotify.com',
+    })
+    expect(normalized.patterns).toEqual(['youtube.com', 'youtu.be', 'spotify.com'])
+    expect(normalized.url).toBe('youtube.com|youtu.be|spotify.com')
+    expect(normalized.mode).toBe('group_1')
+    expect(normalized.enableSubTrees).toBe(true)
+    expect(normalized.pinToTop).toBe(true)
+    expect(normalized.panelId).toBe('none')
+    expect(normalized.color).toBe('toolbar')
+  })
+
+  test('exclude rule prevents matching in both custom and universal modes', () => {
+    browser.publicSuffix.getDomain = (h: string) => h.split('.').slice(-2).join('.')
+    Settings.state.domainTrees = true
+    Settings.state.domainTreesUniversal = true
+    Settings.state.domainTreeRules = [
+      {
+        id: 'excl_1',
+        active: true,
+        name: 'No Group Local',
+        url: 'example.com|/internal\\.corp/',
+        patterns: ['example.com', '/internal\\.corp/'],
+        mode: 'exclude',
+      },
+    ]
+
+    expect(DomainTrees.isExcludedByRule('https://www.example.com/page')).toBe(true)
+    expect(DomainTrees.matchCustomRule('https://www.example.com/page')).toBeNull()
+    expect(DomainTrees.matchUniversal('https://www.example.com/page')).toBeNull()
+    expect(DomainTrees.matchDomain('https://www.example.com/page')).toBeNull()
+    expect(DomainTrees.matchDomain('https://app.internal.corp/dashboard')).toBeNull()
+    // Non-excluded domains still match universal mode
+    expect(DomainTrees.matchDomain('https://github.com/mbnuqw/sidebery')?.domainKey).toBe('github.com')
+  })
+
+  test('rule mode group_2 requires 2+ tabs and dissolves when down to 1 tab', async () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreesUniversal = false
+    Settings.state.domainTreeRules = [
+      {
+        id: 'r_grp2',
+        active: true,
+        name: 'GitHub',
+        url: 'github.com',
+        patterns: ['github.com'],
+        mode: 'group_2',
+      },
+    ]
+
+    expect(DomainTrees.getRuleThreshold('github', 'https://github.com/a')).toBe(2)
+
+    const ph: Tab = {
+      id: 980,
+      url: DomainTrees.createDomainTreeUrl('github', 'GitHub'),
+      title: 'GitHub',
+      isGroup: true,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId: 'tabs_panel',
+    } as Tab
+    const child: Tab = {
+      id: 981,
+      url: 'https://github.com/a',
+      index: 1,
+      lvl: 1,
+      parentId: 980,
+      panelId: 'tabs_panel',
+    } as Tab
+
+    expect(DomainTrees.isCustomRulePlaceholder(ph, [child])).toBe(false)
+  })
+
+  test('pinToTop override allows pinning unnamed rules or unpinning named rules', () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeRules = [
+      {
+        id: 'named_unpinned',
+        active: true,
+        name: 'Media',
+        url: 'youtube.com',
+        pinToTop: false,
+      },
+      {
+        id: 'unnamed_pinned',
+        active: true,
+        url: 'github.com',
+        pinToTop: true,
+      },
+    ]
+
+    expect(DomainTrees.isNamedDomainRule('media')).toBe(false)
+    expect(DomainTrees.isNamedDomainRule('github.com')).toBe(true)
+  })
+
+  test('enableSubTrees=false keeps multi-domain or subdomain tabs flat under root placeholder', async () => {
+    browser.publicSuffix.getDomain = (h: string) => h.split('.').slice(-2).join('.')
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeRules = [
+      {
+        id: 'flat_media',
+        active: true,
+        name: 'Media',
+        url: 'youtube.com|spotify.com',
+        patterns: ['youtube.com', 'spotify.com'],
+        enableSubTrees: false,
+      },
+    ]
+
+    const panelId = 'tabs_panel'
+    Sidebar.panelsById[panelId] = {
+      id: panelId,
+      type: PanelType.tabs,
+      startTabIndex: 0,
+      nextTabIndex: 5,
+      tabs: [],
+    } as any
+
+    const rootPh: Tab = {
+      id: 990,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId,
+      isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('media', 'Media'),
+    } as Tab
+    const subPh: Tab = {
+      id: 991,
+      index: 1,
+      lvl: 1,
+      parentId: 990,
+      panelId,
+      isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('youtube.com', 'YouTube'),
+    } as Tab
+    const yt1: Tab = {
+      id: 992,
+      index: 2,
+      lvl: 2,
+      parentId: 991,
+      panelId,
+      url: 'https://www.youtube.com/watch?v=1',
+    } as Tab
+    const yt2: Tab = {
+      id: 993,
+      index: 3,
+      lvl: 2,
+      parentId: 991,
+      panelId,
+      url: 'https://www.youtube.com/watch?v=2',
+    } as Tab
+
+    Tabs.list.length = 0
+    Tabs.list.push(rootPh, subPh, yt1, yt2)
+    for (const id of Object.keys(Tabs.byId)) delete Tabs.byId[id]
+    Tabs.byId[990] = rootPh
+    Tabs.byId[991] = subPh
+    Tabs.byId[992] = yt1
+    Tabs.byId[993] = yt2
+
+    const moveSpy = vi.spyOn(Tabs, 'move').mockImplementation(async (tabs, _src, dst) => {
+      for (const t of tabs as Tab[]) {
+        t.parentId = dst.parentId ?? -1
+        t.lvl = 1
+      }
+    })
+    const rmSpy = vi.spyOn(Tabs, 'removeTabs').mockResolvedValue(undefined)
+
+    await DomainTrees.scanSubDomainTrees(rootPh)
+
+    expect(moveSpy).toHaveBeenCalled()
+    expect(yt1.parentId).toBe(990)
+    expect(yt2.parentId).toBe(990)
+    expect(rmSpy).toHaveBeenCalledWith([991], true)
+
+    moveSpy.mockRestore()
+    rmSpy.mockRestore()
+  })
+
+  test('rule color and target panelId are applied to domain tree placeholders', () => {
+    Settings.state.domainTrees = true
+    const devPanelId = 'dev_panel'
+    Sidebar.panelsById[devPanelId] = {
+      id: devPanelId,
+      type: PanelType.tabs,
+      startTabIndex: 0,
+      nextTabIndex: 2,
+      tabs: [],
+    } as any
+
+    Settings.state.domainTreeRules = [
+      {
+        id: 'dev_rule',
+        active: true,
+        name: 'Dev',
+        url: 'github.com|gitlab.com',
+        panelId: devPanelId,
+        color: 'purple',
+      },
+    ]
+
+    expect(DomainTrees.getRuleTargetPanelId('dev', 'https://github.com/org/repo')).toBe(devPanelId)
+
+    const ph: Tab = {
+      id: 995,
+      isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('dev', 'Dev'),
+      reactive: { customColor: null } as any,
+    } as Tab
+
+    DomainTrees.applyRuleColorToPlaceholder(ph, 'dev')
+    expect(ph.customColor).toBe('purple')
+    expect(ph.reactive.customColor).toBe('purple')
+  })
 })
-
-

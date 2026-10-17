@@ -316,9 +316,17 @@ export interface SettingsState {
   kbNewTabInPanelPos: (typeof SETTINGS_OPTIONS.newTabInPanelPos)[number]
 }
 
+export type DomainTreeRuleMode = 'group_1' | 'group_2' | 'exclude'
+
 export interface DomainTreeRuleConfig {
   id: ID
   active: boolean
   name?: string
   url: string
+  patterns?: string[]
+  mode?: DomainTreeRuleMode
+  enableSubTrees?: boolean
+  pinToTop?: boolean
+  panelId?: ID
+  color?: string
 }
