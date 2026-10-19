@@ -171,6 +171,8 @@ export const DEFAULT_SETTINGS: SettingsState = {
   domainTreeCollapseTimeout: 'off',
   domainTreeCollapseTimeoutCustom: 15,
   domainTreeMoveToTop: false,
+  domainTreeFocusNewTab: false,
+  domainTreeHeaderOpensFirstTab: false,
   domainTreeConfirmClose: true,
 
   // Tabs colorization

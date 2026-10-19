@@ -216,8 +216,15 @@ export function recordActiveChild(tab: T.Tab): void {
   }
 }
 
+function getFirstChild(placeholder: T.Tab): T.Tab | undefined {
+  return Tabs.getBranch(placeholder, false).find(
+    t => t.id !== placeholder.id && !isDomainTreeGroup(t) && !Tabs.removingTabs?.includes(t.id)
+  )
+}
+
 export function getLastActiveChild(placeholder?: T.Tab): T.Tab | undefined {
   if (!placeholder || !isDomainTreeGroup(placeholder)) return
+  if (Settings.state.domainTreeHeaderOpensFirstTab) return getFirstChild(placeholder)
 
   const children = Tabs.getBranch(placeholder, false).filter(
     t => t.id !== placeholder.id && !isDomainTreeGroup(t) && !Tabs.removingTabs?.includes(t.id)
@@ -658,6 +665,7 @@ export function areSubTreesEnabledForKey(domainKey?: string): boolean {
   return true
 }
 
+
 export function getRuleTargetPanelId(domainKey?: string, sampleUrl?: string): ID | undefined {
   const rule = (sampleUrl ? findMatchingRule(sampleUrl) : null) ?? findRuleByDomainKey(domainKey)
   if (!rule || rule.mode === 'exclude') return undefined
@@ -754,16 +762,18 @@ export function getNamedDomainTreeInsertionIndex(panelId: ID): number {
 }
 
 export async function moveDomainTreeToTop(tree: T.Tab, newTab?: T.Tab): Promise<void> {
-  if (!Settings.state.domainTreeMoveToTop) return
-  const panel = Sidebar.panelsById[tree.panelId]
-  if (!Utils.isTabsPanel(panel) || !isDomainTreeGroup(tree) || tree.pinned || tree.parentId !== NOID) return
-  if (tree.index !== panel.startTabIndex) {
-    const branch = Tabs.getBranch(tree, true)
-    if (branch.length) {
-      await Tabs.move(branch, {}, { index: panel.startTabIndex, panelId: panel.id, parentId: NOID })
+  if (Settings.state.domainTreeMoveToTop) {
+    const panel = Sidebar.panelsById[tree.panelId]
+    if (Utils.isTabsPanel(panel) && isDomainTreeGroup(tree) && !tree.pinned && tree.parentId === NOID) {
+      if (tree.index !== panel.startTabIndex) {
+        const branch = Tabs.getBranch(tree, true)
+        if (branch.length) {
+          await Tabs.move(branch, {}, { index: panel.startTabIndex, panelId: panel.id, parentId: NOID })
+        }
+      }
     }
   }
-  if (newTab && Tabs.byId[newTab.id] === newTab) {
+  if (Settings.state.domainTreeFocusNewTab && newTab && Tabs.byId[newTab.id] === newTab) {
     if (newTab.invisible || Tabs.byId[newTab.parentId]?.folded) Tabs.expTabsBranch(newTab.parentId)
     if (!newTab.active) await browser.tabs.update(newTab.id, { active: true })
     Tabs.scrollToTabDebounced(0, newTab.id, true)

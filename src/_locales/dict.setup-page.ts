@@ -4052,6 +4052,12 @@ Available parameters:
   'settings.domain_tree_move_to_top': {
     en: 'Move domain trees to the top when a new tab joins them',
   },
+  'settings.domain_tree_focus_new_tab': {
+    en: 'Focus the new tab that joined a group',
+  },
+  'settings.domain_tree_header_opens_first_tab': {
+    en: 'Clicking a group header opens its first tab',
+  },
   'settings.domain_tree_confirm_close': {
     en: 'Confirm before closing domain tree placeholder',
   },

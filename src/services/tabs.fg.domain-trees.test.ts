@@ -1847,6 +1847,7 @@ describe('DomainTrees service', () => {
 
   test.each([false, true])('reveals the new tab after promotion, including nested folded trees (nested=%s)', async nested => {
     Settings.state.domainTreeMoveToTop = true
+    Settings.state.domainTreeFocusNewTab = true
     const panelId = 'reveal_panel'
     Sidebar.panelsById[panelId] = {
       id: panelId, type: PanelType.tabs, startTabIndex: 0, nextTabIndex: 4,
@@ -1890,7 +1891,7 @@ describe('DomainTrees service', () => {
 
       activate.mockClear()
       scroll.mockClear()
-      Settings.state.domainTreeMoveToTop = false
+      Settings.state.domainTreeFocusNewTab = false
       await DomainTrees.moveDomainTreeToTop(tree, tab)
       expect(activate).not.toHaveBeenCalled()
       expect(scroll).not.toHaveBeenCalled()
@@ -1901,6 +1902,75 @@ describe('DomainTrees service', () => {
       activate.mockRestore()
     }
   })
+
+  test.each([
+    [true, true, true, true],
+    [true, false, true, false],
+    [false, true, false, true],
+    [false, false, false, false],
+  ])(
+    'moveDomainTreeToTop respects moveToTop=%s and focusNewTab=%s (expectsMove=%s, expectsFocus=%s)',
+    async (moveToTop, focusNewTab, expectsMove, expectsFocus) => {
+      Settings.state.domainTreeMoveToTop = moveToTop
+      Settings.state.domainTreeFocusNewTab = focusNewTab
+      const panelId = 'focus_test_panel'
+      Sidebar.panelsById[panelId] = {
+        id: panelId,
+        type: PanelType.tabs,
+        startTabIndex: 0,
+        nextTabIndex: 4,
+      } as any
+      const tree = new MTab({
+        id: 2400,
+        index: 1,
+        panelId,
+        isGroup: true,
+        folded: true,
+        url: DomainTrees.createDomainTreeUrl('example.com', 'Example'),
+      })
+      const tab = new MTab({
+        id: 2401,
+        index: 2,
+        panelId,
+        lvl: 1,
+        parentId: tree.id,
+        active: false,
+      })
+      Tabs.list.length = 0
+      Tabs.list.push(new MTab({ id: 2399 }), tree, tab)
+      Tabs.byId[tree.id] = tree
+      Tabs.byId[tab.id] = tab
+
+      const move = vi.spyOn(Tabs, 'move').mockResolvedValue()
+      const expand = vi.spyOn(Tabs, 'expTabsBranch').mockImplementation(() => {})
+      const scroll = vi.spyOn(Tabs, 'scrollToTabDebounced').mockImplementation(() => {})
+      const activate = vi.spyOn(browser.tabs, 'update').mockResolvedValue({} as browser.tabs.Tab)
+
+      try {
+        await DomainTrees.moveDomainTreeToTop(tree, tab)
+        if (expectsMove) {
+          expect(move).toHaveBeenCalled()
+        } else {
+          expect(move).not.toHaveBeenCalled()
+        }
+
+        if (expectsFocus) {
+          expect(expand).toHaveBeenCalledWith(tab.parentId)
+          expect(activate).toHaveBeenCalledExactlyOnceWith(tab.id, { active: true })
+          expect(scroll).toHaveBeenCalledWith(0, tab.id, true)
+        } else {
+          expect(expand).not.toHaveBeenCalled()
+          expect(activate).not.toHaveBeenCalled()
+          expect(scroll).not.toHaveBeenCalled()
+        }
+      } finally {
+        move.mockRestore()
+        expand.mockRestore()
+        scroll.mockRestore()
+        activate.mockRestore()
+      }
+    }
+  )
 
   test.each([true, false])('promotes an entire receiving domain tree only when enabled (%s)', async enabled => {
     Settings.state.domainTreeMoveToTop = enabled

@@ -574,6 +574,20 @@ section(ref="el")
         :inactive="!Settings.state.domainTrees"
         @update:value="Settings.saveDebounced(150)")
       ToggleField(
+        label="settings.domain_tree_focus_new_tab"
+        dbg="domainTreeFocusNewTab"
+        v-model:value="Settings.state.domainTreeFocusNewTab"
+        :default="DEFAULT_SETTINGS.domainTreeFocusNewTab"
+        :inactive="!Settings.state.domainTrees"
+        @update:value="Settings.saveDebounced(150)")
+      ToggleField(
+        label="settings.domain_tree_header_opens_first_tab"
+        dbg="domainTreeHeaderOpensFirstTab"
+        v-model:value="Settings.state.domainTreeHeaderOpensFirstTab"
+        :default="DEFAULT_SETTINGS.domainTreeHeaderOpensFirstTab"
+        :inactive="!Settings.state.domainTrees"
+        @update:value="Settings.saveDebounced(150)")
+      ToggleField(
         label="settings.domain_tree_confirm_close"
         dbg="domainTreeConfirmClose"
         v-model:value="Settings.state.domainTreeConfirmClose"
@@ -1313,6 +1327,7 @@ function setRuleSubTrees(rule: DomainTreeRuleConfig, val: boolean): void {
   rule.enableSubTrees = val
   Settings.saveDebounced(150)
 }
+
 
 function setRulePinToTop(rule: DomainTreeRuleConfig, val: boolean): void {
   rule.pinToTop = val

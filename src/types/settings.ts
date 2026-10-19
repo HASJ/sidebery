@@ -172,6 +172,8 @@ export interface SettingsState {
   domainTreeCollapseTimeout: (typeof SETTINGS_OPTIONS.domainTreeCollapseTimeout)[number]
   domainTreeCollapseTimeoutCustom: number
   domainTreeMoveToTop: boolean
+  domainTreeFocusNewTab: boolean
+  domainTreeHeaderOpensFirstTab: boolean
   domainTreeConfirmClose: boolean
 
   // Tabs colorization
