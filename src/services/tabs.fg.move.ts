@@ -310,8 +310,8 @@ export async function move(
     }
   }
 
-  // Activate folded parent tab
-  if (isActive && dstParent && dstParent.folded) {
+  // Activate folded parent tab (domain tree headers keep the active child visible instead)
+  if (isActive && dstParent && dstParent.folded && !Tabs.DomainTrees?.isDomainTreeGroup(dstParent)) {
     browser.tabs.update(dstParent.id, { active: true }).catch(err => {
       Logs.err('Tabs.move: Cannot activate tab:', err)
     })
