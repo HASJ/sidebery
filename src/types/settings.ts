@@ -166,6 +166,7 @@ export interface SettingsState {
   // Domain trees
   domainTrees: boolean
   domainTreesUniversal: boolean
+  domainTreeGroupParentDomain: boolean
   domainTreeRules: DomainTreeRuleConfig[]
   domainTreeNewTabPosition: (typeof SETTINGS_OPTIONS.domainTreeNewTabPosition)[number]
   domainTreeAutoFold: boolean
@@ -328,6 +329,7 @@ export interface DomainTreeRuleConfig {
   patterns?: string[]
   mode?: DomainTreeRuleMode
   enableSubTrees?: boolean
+  groupParentDomain?: boolean
   pinToTop?: boolean
   panelId?: ID
   color?: string

@@ -4019,6 +4019,9 @@ Available parameters:
   'settings.domain_trees_universal': {
     en: 'Auto-group any domain with 2 or more tabs',
   },
+  'settings.domain_tree_group_parent_domain': {
+    en: 'Group tabs matching parent domain into a sub-tree regardless',
+  },
   'settings.domain_tree_auto_fold': {
     en: 'Auto-fold domain trees',
   },
@@ -4117,6 +4120,9 @@ Available parameters:
   },
   'settings.domain_tree_rule_subtrees_label': {
     en: 'Group subdomains & multi-domains into nested sub-trees',
+  },
+  'settings.domain_tree_rule_group_parent_domain_label': {
+    en: 'Group tabs matching parent domain into a sub-tree regardless',
   },
   'settings.domain_tree_rule_pin_top_label': {
     en: 'Pin tree to the top of the panel',

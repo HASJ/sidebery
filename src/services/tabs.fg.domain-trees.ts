@@ -388,6 +388,8 @@ export function normalizeDomainTreeRule(
   const mode: T.DomainTreeRuleMode =
     rule.mode === 'group_2' || rule.mode === 'exclude' ? rule.mode : 'group_1'
   const enableSubTrees = rule.enableSubTrees !== undefined ? !!rule.enableSubTrees : true
+  const groupParentDomain =
+    rule.groupParentDomain !== undefined ? !!rule.groupParentDomain : undefined
   const pinToTop = rule.pinToTop !== undefined ? !!rule.pinToTop : !!name
   const panelId = rule.panelId !== undefined ? rule.panelId : 'none'
   const color = rule.color || 'toolbar'
@@ -400,6 +402,7 @@ export function normalizeDomainTreeRule(
     patterns,
     mode,
     enableSubTrees,
+    groupParentDomain,
     pinToTop,
     panelId,
     color,
@@ -665,6 +668,11 @@ export function areSubTreesEnabledForKey(domainKey?: string): boolean {
   return true
 }
 
+export function isGroupParentDomainEnabledForKey(domainKey?: string): boolean {
+  const rule = findRuleByDomainKey(domainKey)
+  if (rule && rule.groupParentDomain !== undefined) return rule.groupParentDomain
+  return !!Settings.state.domainTreeGroupParentDomain
+}
 
 export function getRuleTargetPanelId(domainKey?: string, sampleUrl?: string): ID | undefined {
   const rule = (sampleUrl ? findMatchingRule(sampleUrl) : null) ?? findRuleByDomainKey(domainKey)
@@ -928,7 +936,8 @@ export function getImmediateDomainTree(tab: T.Tab): T.Tab | undefined {
 
 export function getSubDomainKey(
   url?: string,
-  parentDomainKey?: string
+  parentDomainKey?: string,
+  groupParentDomain?: boolean
 ): { subKey: string; title: string } | null {
   if (!url || !Settings.state.domainTrees) return null
   if (
@@ -958,6 +967,11 @@ export function getSubDomainKey(
   const canonical = getCanonicalDomain(hostname)
 
   if (parentDomainKey) {
+    const shouldGroupParent =
+      groupParentDomain !== undefined
+        ? groupParentDomain
+        : isGroupParentDomainEnabledForKey(parentDomainKey)
+
     const normParent = parentDomainKey.toLowerCase().replace(/^www\./, '')
     const parentName = normParent.split('.')[0]
     const baseName = baseDomain.split('.')[0]
@@ -983,18 +997,40 @@ export function getSubDomainKey(
         subPart = hostname.slice(0, -(normParent.length + 1))
       }
 
-      if (!subPart) return null
+      if (!subPart) {
+        if (shouldGroupParent) {
+          return {
+            subKey: canonical,
+            title: formatTitle(canonical),
+          }
+        }
+        return null
+      }
 
       // Check if all dot-separated segments in subPart are ignorable prefixes (e.g. br, pt, www, m)
       const segments = subPart.split('.').filter(Boolean)
       if (segments.every(isIgnorablePrefix)) {
         // e.g. "br.youtube.com", "pt.youtube.com", "www.youtube.com" -> belongs directly to parent!
+        if (shouldGroupParent) {
+          return {
+            subKey: canonical,
+            title: formatTitle(canonical),
+          }
+        }
         return null
       }
 
       // Filter out ignorable prefixes to find the meaningful sub-service name (e.g. "br.music" -> "music")
       const meaningful = segments.filter(s => !isIgnorablePrefix(s))
-      if (!meaningful.length) return null
+      if (!meaningful.length) {
+        if (shouldGroupParent) {
+          return {
+            subKey: canonical,
+            title: formatTitle(canonical),
+          }
+        }
+        return null
+      }
 
       const meaningfulKey = meaningful.join('.') + '.' + baseDomain
       const titleName = meaningful[0]
@@ -1598,7 +1634,8 @@ export async function scanSubDomainTrees(parentPlaceholder: T.Tab, depth = 0): P
       }
     }
 
-    const subMatch = getSubDomainKey(tab.url, parentDomainKey)
+    const groupParent = depth === 0 && isGroupParentDomainEnabledForKey(parentDomainKey)
+    const subMatch = getSubDomainKey(tab.url, parentDomainKey, groupParent)
     if (!subMatch) {
       // Root tab of parent domain. If it was under a sub-placeholder, move it directly to parent.
       if (tab.parentId !== freshParent.id) {

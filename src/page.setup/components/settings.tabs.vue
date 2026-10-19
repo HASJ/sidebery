@@ -533,6 +533,13 @@ section(ref="el")
         :inactive="!Settings.state.domainTrees"
         @update:value="Settings.saveDebounced(150)")
       ToggleField(
+        label="settings.domain_tree_group_parent_domain"
+        dbg="domainTreeGroupParentDomain"
+        v-model:value="Settings.state.domainTreeGroupParentDomain"
+        :default="DEFAULT_SETTINGS.domainTreeGroupParentDomain"
+        :inactive="!Settings.state.domainTrees"
+        @update:value="Settings.saveDebounced(150)")
+      ToggleField(
         label="settings.domain_tree_auto_fold"
         dbg="domainTreeAutoFold"
         v-model:value="Settings.state.domainTreeAutoFold"
@@ -689,6 +696,11 @@ section(ref="el")
                   label="settings.domain_tree_rule_subtrees_label"
                   :value="rule.enableSubTrees !== false"
                   @update:value="setRuleSubTrees(rule, $event)")
+                ToggleField(
+                  v-if="rule.enableSubTrees !== false"
+                  label="settings.domain_tree_rule_group_parent_domain_label"
+                  :value="rule.groupParentDomain !== undefined ? rule.groupParentDomain : Settings.state.domainTreeGroupParentDomain"
+                  @update:value="setRuleGroupParentDomain(rule, $event)")
                 ToggleField(
                   label="settings.domain_tree_rule_pin_top_label"
                   :value="isRulePinnedToTop(rule)"
@@ -1328,6 +1340,10 @@ function setRuleSubTrees(rule: DomainTreeRuleConfig, val: boolean): void {
   Settings.saveDebounced(150)
 }
 
+function setRuleGroupParentDomain(rule: DomainTreeRuleConfig, val: boolean): void {
+  rule.groupParentDomain = val
+  Settings.saveDebounced(150)
+}
 
 function setRulePinToTop(rule: DomainTreeRuleConfig, val: boolean): void {
   rule.pinToTop = val

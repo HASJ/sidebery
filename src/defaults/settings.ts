@@ -165,6 +165,7 @@ export const DEFAULT_SETTINGS: SettingsState = {
   // Domain trees
   domainTrees: false,
   domainTreesUniversal: true,
+  domainTreeGroupParentDomain: false,
   domainTreeRules: [],
   domainTreeNewTabPosition: 'last_child',
   domainTreeAutoFold: true,

@@ -2606,4 +2606,215 @@ describe('DomainTrees service', () => {
     expect(ph.customColor).toBe('purple')
     expect(ph.reactive.customColor).toBe('purple')
   })
+
+  test('getSubDomainKey and isGroupParentDomainEnabledForKey support grouping parent domain tabs regardless', () => {
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeGroupParentDomain = false
+
+    // Default: github tab under "github" returns null
+    expect(DomainTrees.getSubDomainKey('https://github.com/torvalds/linux', 'github', false)).toBeNull()
+    expect(DomainTrees.getSubDomainKey('https://www.github.com/torvalds/linux', 'github', false)).toBeNull()
+
+    // With groupParentDomain=true: returns canonical subKey and title
+    expect(DomainTrees.getSubDomainKey('https://github.com/torvalds/linux', 'github', true)).toEqual({
+      subKey: 'github.com',
+      title: 'GitHub',
+    })
+    expect(DomainTrees.getSubDomainKey('https://www.github.com/torvalds/linux', 'github', true)).toEqual({
+      subKey: 'github.com',
+      title: 'GitHub',
+    })
+
+    // External domain like trendshift.io always returns subKey regardless
+    expect(DomainTrees.getSubDomainKey('https://trendshift.io/repositories', 'github', false)).toEqual({
+      subKey: 'trendshift.io',
+      title: 'Trendshift',
+    })
+    expect(DomainTrees.getSubDomainKey('https://trendshift.io/repositories', 'github', true)).toEqual({
+      subKey: 'trendshift.io',
+      title: 'Trendshift',
+    })
+
+    // Rule level groupParentDomain configuration
+    Settings.state.domainTreeRules = [
+      {
+        id: 'rule_gh',
+        name: 'GitHub',
+        active: true,
+        url: 'github.com|trendshift.io',
+        groupParentDomain: true,
+      },
+      {
+        id: 'rule_media',
+        name: 'Media',
+        active: true,
+        url: 'youtube|spotify',
+        groupParentDomain: false,
+      },
+    ]
+
+    expect(DomainTrees.isGroupParentDomainEnabledForKey('github')).toBe(true)
+    expect(DomainTrees.isGroupParentDomainEnabledForKey('media')).toBe(false)
+
+    // Falls back to global setting when not specified on rule
+    Settings.state.domainTreeRules = [
+      {
+        id: 'rule_other',
+        name: 'Other',
+        active: true,
+        url: 'other.com',
+      },
+    ]
+    Settings.state.domainTreeGroupParentDomain = false
+    expect(DomainTrees.isGroupParentDomainEnabledForKey('other')).toBe(false)
+    Settings.state.domainTreeGroupParentDomain = true
+    expect(DomainTrees.isGroupParentDomainEnabledForKey('other')).toBe(true)
+  })
+
+  test('scanSubDomainTrees groups parent domain tabs into a sub-tree when groupParentDomain is enabled', async () => {
+    browser.publicSuffix.getDomain = (h: string) => h.split('.').slice(-2).join('.')
+    Settings.state.domainTrees = true
+    Settings.state.domainTreeRules = [
+      {
+        id: 'gh_rule',
+        active: true,
+        name: 'GitHub',
+        url: 'github.com|trendshift.io',
+        patterns: ['github.com', 'trendshift.io'],
+        enableSubTrees: true,
+        groupParentDomain: true,
+      },
+    ]
+
+    Sidebar.panelsById['default'] = {
+      id: 'default',
+      type: PanelType.tabs,
+      tabs: [],
+      reactive: { visibleTabIds: [] },
+    } as any
+    const foldSpy = vi.spyOn(Tabs, 'foldTabsBranch').mockImplementation(() => {})
+
+    const rmSpy = vi.spyOn(Tabs, 'removeTabs').mockImplementation(async (ids: any) => {
+      for (const id of ids) {
+        delete Tabs.byId[id]
+        const idx = Tabs.list.findIndex(t => t.id === id)
+        if (idx !== -1) Tabs.list.splice(idx, 1)
+      }
+      for (let i = 0; i < Tabs.list.length; i++) {
+        Tabs.list[i].index = i
+      }
+    })
+
+    const rootPh: Tab = {
+      id: 3000,
+      index: 0,
+      lvl: 0,
+      parentId: -1,
+      panelId: 'default',
+      isGroup: true,
+      url: DomainTrees.createDomainTreeUrl('github', 'GitHub'),
+    } as Tab
+
+    const gh1: Tab = {
+      id: 3001,
+      index: 1,
+      lvl: 1,
+      parentId: 3000,
+      panelId: 'default',
+      url: 'https://github.com/user/repo1',
+    } as Tab
+    const gh2: Tab = {
+      id: 3002,
+      index: 2,
+      lvl: 1,
+      parentId: 3000,
+      panelId: 'default',
+      url: 'https://github.com/user/repo2',
+    } as Tab
+    const ts1: Tab = {
+      id: 3003,
+      index: 3,
+      lvl: 1,
+      parentId: 3000,
+      panelId: 'default',
+      url: 'https://trendshift.io/repositories',
+    } as Tab
+    const ts2: Tab = {
+      id: 3004,
+      index: 4,
+      lvl: 1,
+      parentId: 3000,
+      panelId: 'default',
+      url: 'https://trendshift.io/explore',
+    } as Tab
+
+    Tabs.list.length = 0
+    for (const k of Object.keys(Tabs.byId)) delete Tabs.byId[k]
+    Tabs.list.push(rootPh, gh1, gh2, ts1, ts2)
+    Tabs.byId[3000] = rootPh
+    Tabs.byId[3001] = gh1
+    Tabs.byId[3002] = gh2
+    Tabs.byId[3003] = ts1
+    Tabs.byId[3004] = ts2
+
+    let nextId = 3010
+    browser.tabs.create = vi.fn().mockImplementation(async (createData: any) => {
+      const id = nextId++
+      const newTab: Tab = {
+        id,
+        index: createData.index ?? Tabs.list.length,
+        lvl: 1,
+        url: createData.url,
+        panelId: 'default',
+        parentId: 3000,
+        isGroup: true,
+        reactive: {} as any,
+      } as Tab
+      Tabs.byId[id] = newTab
+      Tabs.list.splice(newTab.index, 0, newTab)
+      for (let i = 0; i < Tabs.list.length; i++) {
+        Tabs.list[i].index = i
+      }
+      return { id, index: newTab.index } as any
+    })
+
+    const moveSpy = vi.spyOn(Tabs, 'move').mockImplementation(async (tabs: any, _, dst: any) => {
+      for (const t of tabs) {
+        t.parentId = dst.parentId
+        t.lvl = dst.parentId === 3000 ? 1 : 2
+        const curIdx = Tabs.list.indexOf(t)
+        if (curIdx !== -1) Tabs.list.splice(curIdx, 1)
+        const parentIdx = Tabs.list.findIndex(p => p.id === dst.parentId)
+        Tabs.list.splice(parentIdx + 1, 0, t)
+      }
+      for (let i = 0; i < Tabs.list.length; i++) {
+        Tabs.list[i].index = i
+      }
+    })
+
+    await DomainTrees.scanSubDomainTrees(rootPh)
+
+    // Both github.com and trendshift.io should have daughter sub-placeholders created
+    const ghSubPh = Tabs.list.find(
+      t => DomainTrees.isDomainTreeGroup(t) && DomainTrees.getDomainTreeKey(t) === 'github.com'
+    )
+    const tsSubPh = Tabs.list.find(
+      t => DomainTrees.isDomainTreeGroup(t) && DomainTrees.getDomainTreeKey(t) === 'trendshift.io'
+    )
+
+    expect(ghSubPh).toBeDefined()
+    expect(ghSubPh?.parentId).toBe(3000)
+    expect(tsSubPh).toBeDefined()
+    expect(tsSubPh?.parentId).toBe(3000)
+
+    // Content tabs should be attached to their respective sub-placeholders
+    expect(gh1.parentId).toBe(ghSubPh!.id)
+    expect(gh2.parentId).toBe(ghSubPh!.id)
+    expect(ts1.parentId).toBe(tsSubPh!.id)
+    expect(ts2.parentId).toBe(tsSubPh!.id)
+
+    moveSpy.mockRestore()
+    rmSpy.mockRestore()
+    foldSpy.mockRestore()
+  })
 })
