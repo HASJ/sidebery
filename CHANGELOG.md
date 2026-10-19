@@ -1,5 +1,17 @@
 # Changelog
 
+## v5.8.0 - 2026.10.19
+
+### Added
+
+- Domain trees: option to focus the new tab that joined a group
+- Domain trees: option to open the first tab of a group when its header is clicked
+- Domain trees: option to group tabs matching parent domain into a sub-tree regardless
+
+### Fixed
+
+- Domain trees: a new tab navigated into a collapsed group no longer activates the group header instead of the page
+
 ## v5.7.1 - 2026.10.17
 
 ### Fixed
